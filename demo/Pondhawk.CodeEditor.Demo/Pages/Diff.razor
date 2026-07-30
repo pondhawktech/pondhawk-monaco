@@ -1,0 +1,204 @@
+@page "/diff"
+@using Pondhawk.Blazor.CodeEditor
+
+<PageTitle>Pondhawk DiffEditor — demo</PageTitle>
+
+<div class="demo">
+    <header>
+        <strong>Pondhawk.Blazor.CodeEditor — DiffEditor</strong>
+        <span class="sub">Monaco's diff view · same bundle, no extra download</span>
+    </header>
+
+    <div class="body">
+        <div class="editor-pane">
+            <DiffEditor @ref="_diff"
+                        Original="@_original"
+                        Modified="@_modified"
+                        ModifiedChanged="OnModifiedChanged"
+                        Language="@_language"
+                        Theme="@_theme"
+                        ReadOnly="@_readOnly"
+                        SideBySide="@_sideBySide"
+                        IgnoreTrimWhitespace="@_ignoreWhitespace"
+                        OnDiffComputed="@(n => { _changes = n; StateHasChanged(); })"
+                        Style="height:100%" />
+        </div>
+
+        <aside class="panel">
+            <label>Sample</label>
+            <select @onchange="OnSampleChanged" value="@_language">
+                @foreach (var s in Samples)
+                {
+                    <option value="@s.Language">@s.Label</option>
+                }
+            </select>
+
+            <label>Theme</label>
+            <select @onchange="@(e => _theme = e.Value?.ToString() ?? "vs")" value="@_theme">
+                <option value="vs">vs</option>
+                <option value="vs-dark">vs-dark</option>
+                <option value="hc-black">hc-black</option>
+            </select>
+
+            <hr />
+
+            @* Every one of these goes through updateOptions rather than rebuilding the editor, so the
+               scroll position and undo stack survive the toggle. *@
+            <label>View</label>
+            <label class="check">
+                <input type="checkbox" checked="@_sideBySide"
+                       @onchange="@(e => _sideBySide = (bool)e.Value!)" /> Side by side
+            </label>
+            <label class="check">
+                <input type="checkbox" checked="@_ignoreWhitespace"
+                       @onchange="@(e => _ignoreWhitespace = (bool)e.Value!)" /> Ignore trim whitespace
+            </label>
+            <label class="check">
+                <input type="checkbox" checked="@(!_readOnly)"
+                       @onchange="@(e => _readOnly = !(bool)e.Value!)" /> Editable (right side)
+            </label>
+
+            <hr />
+
+            @* The count arrives via OnDiffComputed. Monaco computes the diff asynchronously, so reading
+               it straight after setting the models would always report zero. *@
+            <label>Changes</label>
+            <div class="stat">@_changes changed @(_changes == 1 ? "region" : "regions")</div>
+
+            <button @onclick="() => _diff?.GoToPreviousDiffAsync()">◀ Previous</button>
+            <button @onclick="() => _diff?.GoToNextDiffAsync()">Next ▶</button>
+            <button @onclick="() => _diff?.RevealFirstDiffAsync()">Reveal first</button>
+
+            <hr />
+
+            <label>Bound modified value</label>
+            <div class="stat">@_modified.Length chars</div>
+            <div class="stat muted">edits seen: @_editCount</div>
+
+            <p class="hint">
+                Tick <em>Editable</em>, type in the right-hand pane, and watch the edit counter tick while
+                the caret stays put — the same echo guard as <code>CodeEditor</code>.
+            </p>
+        </aside>
+    </div>
+</div>
+
+@code {
+    private record Sample(string Language, string Label, string Original, string Modified);
+
+    private DiffEditor? _diff;
+    private string _language = "yaml";
+    private string _theme = "vs";
+    private bool _sideBySide = true;
+    private bool _ignoreWhitespace;
+    private bool _readOnly = true;
+    private int _changes;
+    private int _editCount;
+
+    private string _original = "";
+    private string _modified = "";
+
+    protected override void OnInitialized() => Load(Samples[0]);
+
+    private void OnModifiedChanged(string value)
+    {
+        _modified = value;
+        _editCount++;
+    }
+
+    private void OnSampleChanged(ChangeEventArgs e)
+    {
+        _language = e.Value?.ToString() ?? "yaml";
+        Load(Samples.First(s => s.Language == _language));
+    }
+
+    private void Load(Sample sample)
+    {
+        _language = sample.Language;
+        _original = sample.Original;
+        _modified = sample.Modified;
+        _editCount = 0;
+    }
+
+    private static readonly Sample[] Samples =
+    [
+        new("yaml", "YAML — a config revision", """
+            name: billing-api
+            version: 1.4.0
+
+            runtime:
+              kind: container
+              image: registry.example.com/billing-api:1.4.0
+              replicas: 3
+
+            endpoints:
+              - name: public
+                port: 8080
+                protocol: https
+            """, """
+            name: billing-api
+            version: 1.5.0
+
+            runtime:
+              kind: container
+              image: registry.example.com/billing-api:1.5.0
+              replicas: 5
+              memoryMb: 512
+
+            endpoints:
+              - name: public
+                port: 8443
+                protocol: https
+              - name: admin
+                port: 9000
+                protocol: https
+            """),
+
+        new("csharp", "C# — a refactor", """
+            public sealed record Endpoint(string Name, int Port)
+            {
+                public string Url(string host) => $"http://{host}:{Port}";
+            }
+            """, """
+            public sealed record Endpoint(string Name, int Port, string Protocol = "https")
+            {
+                public string Url(string host) => $"{Protocol}://{host}:{Port}";
+
+                public bool IsSecure => Protocol is "https";
+            }
+            """),
+
+        new("json", "JSON — whitespace only", """
+            {
+              "name": "billing-api",
+              "replicas": 3
+            }
+            """, """
+            {
+                "name": "billing-api",
+                "replicas": 3
+            }
+            """),
+    ];
+}
+
+<style>
+    html, body, app, .demo { height: 100%; margin: 0; }
+    .demo { display: flex; flex-direction: column; font-family: system-ui, sans-serif; }
+    header { display: flex; align-items: baseline; gap: .75rem; padding: .6rem 1rem;
+             border-bottom: 1px solid #d8dbe0; background: #fafbfc; flex: 0 0 auto; }
+    .sub { color: #6b7280; font-size: .85rem; }
+    .body { flex: 1 1 auto; display: flex; min-height: 0; }
+    .editor-pane { flex: 1 1 auto; min-width: 0; }
+    .panel { width: 300px; flex: 0 0 auto; border-left: 1px solid #d8dbe0; padding: 1rem;
+             display: flex; flex-direction: column; gap: .35rem; overflow-y: auto; }
+    .panel label { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #6b7280;
+                   margin-top: .25rem; }
+    .panel label.check { text-transform: none; letter-spacing: 0; font-size: .85rem; color: #111;
+                         display: flex; align-items: center; gap: .4rem; margin-top: 0; }
+    .panel select, .panel button { padding: .3rem .5rem; font: inherit; }
+    .stat { font-size: .9rem; }
+    .muted { color: #6b7280; }
+    .hint { font-size: .8rem; color: #6b7280; line-height: 1.4; }
+    hr { border: 0; border-top: 1px solid #e5e7eb; width: 100%; margin: .6rem 0 .2rem; }
+</style>

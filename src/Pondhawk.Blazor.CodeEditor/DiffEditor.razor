@@ -1,0 +1,8 @@
+@namespace Pondhawk.Blazor.CodeEditor
+@implements IAsyncDisposable
+
+<div @ref="_host" class="pondhawk-code-editor pondhawk-diff-editor @Class" style="@Style"></div>
+
+@code {
+    // As with CodeEditor: a bare host element. Monaco renders both panes inside it and owns that subtree.
+}

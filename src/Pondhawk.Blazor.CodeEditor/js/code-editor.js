@@ -10,6 +10,9 @@ import { configureMonacoYaml } from 'monaco-yaml';
 /** id -> { editor, model, dotNet, revision, changeTimer, subscriptions } */
 const editors = new Map();
 
+/** id -> { editor, original, modified, dotNet, revision, changeTimer, subscriptions } */
+const diffs = new Map();
+
 let workersReady = false;
 let yamlConfigured = null;
 
@@ -204,4 +207,144 @@ export function dispose(id) {
   entry.model.dispose();
   // The DotNetObjectReference is disposed on the .NET side; dropping it here only releases our handle.
   editors.delete(id);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Diff editor
+//
+// A separate registry rather than a flag on the entries above: a diff holds two models, its disposal
+// order differs, and sharing one map would mean every function guarding against the other kind.
+// ---------------------------------------------------------------------------------------------------
+
+export function createDiff(id, host, options) {
+  ensureStyles(options.baseUrl);
+  configureWorkers(options.baseUrl);
+  disposeDiff(id); // defensive, matching create()
+
+  const language = options.language ?? 'plaintext';
+  const original = monaco.editor.createModel(options.original ?? '', language);
+  const modified = monaco.editor.createModel(options.modified ?? '', language);
+
+  const editor = monaco.editor.createDiffEditor(host, {
+    minimap: { enabled: options.minimap ?? false },
+    scrollBeyondLastLine: false,
+    tabSize: options.tabSize ?? 2,
+    renderWhitespace: 'selection',
+    fontSize: options.fontSize ?? 12.5,
+    fixedOverflowWidgets: true,
+    theme: options.theme ?? 'vs',
+
+    // Diff-specific. `readOnly` governs the MODIFIED side; the original is separately locked, because
+    // the common case — reviewing what changed — wants the left side immutable even when the right is
+    // being edited.
+    readOnly: options.readOnly ?? false,
+    originalEditable: options.originalEditable ?? false,
+    renderSideBySide: options.sideBySide ?? true,
+    ignoreTrimWhitespace: options.ignoreTrimWhitespace ?? false,
+    renderOverviewRuler: options.overviewRuler ?? true,
+    ...(options.editorOptions ?? {}),
+
+    automaticLayout: false, // same reasoning as create(): layout is driven from .NET
+  });
+
+  editor.setModel({ original, modified });
+
+  const entry = { editor, original, modified, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };
+  diffs.set(id, entry);
+
+  // Only the modified side is reported back. An editable original is supported, but it is a source
+  // document being compared against, not the value the host is binding to.
+  entry.subscriptions.push(modified.onDidChangeContent(() => {
+    entry.revision++;
+    if (!entry.dotNet) return;
+
+    clearTimeout(entry.changeTimer);
+    entry.changeTimer = setTimeout(() => {
+      entry.dotNet.invokeMethodAsync('OnModifiedChanged', modified.getValue(), entry.revision);
+    }, options.debounceMs ?? 300);
+  }));
+
+  // The diff is computed asynchronously, so the change count is only knowable via this event — reading
+  // getLineChanges() straight after setModel returns null.
+  entry.subscriptions.push(editor.onDidUpdateDiff(() => {
+    entry.dotNet?.invokeMethodAsync('OnDiffUpdated', editor.getLineChanges()?.length ?? 0);
+  }));
+
+  editor.layout();
+  return true;
+}
+
+export function attachDiff(id, dotNetRef) {
+  const entry = diffs.get(id);
+  if (entry) entry.dotNet = dotNetRef;
+}
+
+export function getDiffValue(id, side) {
+  const entry = diffs.get(id);
+  if (!entry) return '';
+  return (side === 'original' ? entry.original : entry.modified).getValue();
+}
+
+/** Push text into one side. No-ops on an unchanged value — the same caret guard as setValue(). */
+export function setDiffValue(id, side, value) {
+  const entry = diffs.get(id);
+  if (!entry) return;
+
+  const model = side === 'original' ? entry.original : entry.modified;
+  if (model.getValue() === value) return;
+
+  model.pushEditOperations([], [{ range: model.getFullModelRange(), text: value }], () => null);
+}
+
+export function setDiffLanguage(id, language) {
+  const entry = diffs.get(id);
+  if (!entry) return;
+
+  monaco.editor.setModelLanguage(entry.original, language);
+  monaco.editor.setModelLanguage(entry.modified, language);
+}
+
+/** Change view options — side-by-side vs inline, whitespace handling — without rebuilding the editor. */
+export function setDiffOptions(id, options) {
+  const entry = diffs.get(id);
+  if (!entry) return;
+
+  entry.editor.updateOptions({
+    renderSideBySide: options.sideBySide,
+    ignoreTrimWhitespace: options.ignoreTrimWhitespace,
+    readOnly: options.readOnly,
+    originalEditable: options.originalEditable,
+  });
+}
+
+/** Jump to the next or previous change. `target` is 'next' or 'previous'. */
+export function goToDiff(id, target) {
+  const entry = diffs.get(id);
+  if (!entry) return;
+
+  entry.editor.goToDiff(target === 'previous' ? 'previous' : 'next');
+  entry.editor.getModifiedEditor().focus();
+}
+
+/** Scroll to the first change. Waits internally for the diff computation to finish. */
+export function revealFirstDiff(id) {
+  diffs.get(id)?.editor.revealFirstDiff();
+}
+
+export function diffLayout(id) {
+  diffs.get(id)?.editor.layout();
+}
+
+export function disposeDiff(id) {
+  const entry = diffs.get(id);
+  if (!entry) return;
+
+  clearTimeout(entry.changeTimer);
+  entry.subscriptions.forEach(s => s.dispose());
+
+  // The editor first: disposing a model still attached to a live editor leaves it reading a dead model.
+  entry.editor.dispose();
+  entry.original.dispose();
+  entry.modified.dispose();
+  diffs.delete(id);
 }

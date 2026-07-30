@@ -72,6 +72,40 @@ properties carry a property glyph, word suggestions carry `abc`.
 
 Either strip the modeline and rely on `Schema`, or point it at a URL the app actually serves.
 
+## Diff
+
+`DiffEditor` shows two documents side by side, or interleaved in one pane:
+
+```razor
+<DiffEditor Original="@before" Modified="@after" Language="yaml" />
+```
+
+It is **read-only by default** — a diff is usually shown, not edited. To make the right-hand side
+editable, bind it:
+
+```razor
+<DiffEditor Original="@before" @bind-Modified="after" Language="yaml" ReadOnly="false" />
+```
+
+| Parameter | Default | |
+|---|---|---|
+| `SideBySide` | `true` | Two panes, or one interleaved pane when false |
+| `IgnoreTrimWhitespace` | `false` | Ignore leading/trailing whitespace differences |
+| `OriginalEditable` | `false` | Allow editing the left side too (its edits are not reported) |
+| `OverviewRuler` | `true` | The change ruler down the right edge |
+
+Methods: `GoToNextDiffAsync()`, `GoToPreviousDiffAsync()`, `RevealFirstDiffAsync()`, `LayoutAsync()`,
+and `GetValueAsync(DiffSide)`.
+
+The change count arrives through the `OnDiffComputed` callback rather than a property, because Monaco
+computes the diff asynchronously — reading it straight after setting the models always reports zero.
+
+Toggling `SideBySide` or `IgnoreTrimWhitespace` goes through Monaco's `updateOptions`, so the scroll
+position and undo stack survive the change.
+
+**No extra download.** The diff algorithm and view are part of the Monaco core that `code-editor.js`
+already bundles, and the computation runs in the `editor.worker.js` the editor loads anyway.
+
 ## Layout
 
 ```
@@ -130,5 +164,9 @@ Node and npm are needed **only in this repo**, and only to produce `wwwroot/dist
 Working, and proven in the demo: Monaco renders in Blazor WASM, typing round-trips through .NET without
 the caret jumping, schema-driven completion fires from a supplied JSON Schema, and host diagnostics
 render alongside the language service's own.
+
+`DiffEditor` is proven in the demo too — side-by-side and inline, live re-diff while editing the right
+pane, next/previous navigation, and the whitespace toggle collapsing a whitespace-only diff to zero
+changes.
 
 Not done: published to a feed, tested across hosting models other than WASM.
