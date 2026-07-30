@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+artifacts/
+*.user
+
+# JS toolchain — lives only in the RCL, and only to produce wwwroot/dist
+node_modules/
+
+# Bundled output is a BUILD ARTIFACT, not source. `build.sh` regenerates it from js/ before packing,
+# so committing it would let the checked-in bundle silently drift from the sources that made it.
+src/Pondhawk.Blazor.CodeEditor/wwwroot/dist/
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+.DS_Store
