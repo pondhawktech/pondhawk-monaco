@@ -1,0 +1,9 @@
+@namespace Pondhawk.Blazor.CodeEditor
+@implements IAsyncDisposable
+
+<div @ref="_host" class="pondhawk-code-editor @Class" style="@Style"></div>
+
+@code {
+    // Markup is deliberately just a host element. Monaco renders into it and owns everything inside;
+    // Blazor must never diff that subtree or the two renderers fight over the DOM.
+}

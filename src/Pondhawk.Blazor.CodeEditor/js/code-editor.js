@@ -69,7 +69,24 @@ export function configureSchema(schemaJson, fileMatch) {
   });
 }
 
+/**
+ * Inject Monaco's stylesheet ourselves. esbuild extracts it from the ESM imports into a separate file,
+ * so without this every consumer would have to remember a <link> in index.html — and the failure mode
+ * (an unstyled, unusable editor) gives no hint as to why.
+ */
+function ensureStyles(baseUrl) {
+  const href = `${baseUrl.replace(/\/$/, '')}/code-editor.css`;
+  if (document.querySelector(`link[data-pondhawk-editor]`)) return;
+
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = href;
+  link.setAttribute('data-pondhawk-editor', '');
+  document.head.appendChild(link);
+}
+
 export function create(id, host, options) {
+  ensureStyles(options.baseUrl);
   configureWorkers(options.baseUrl);
   dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
 
