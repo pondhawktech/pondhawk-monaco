@@ -1,0 +1,80 @@
+name: CI
+
+# Build, test and pack on every change; publish a prerelease to GitHub Packages from main.
+#
+# Releases to nuget.org are a separate, manually triggered workflow (release.yml). This one only ever
+# produces prerelease versions, so a CI build can never occupy a version number a real release wants.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are the version source of truth, and a shallow clone has none of them.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Node is needed ONLY here and only to bundle Monaco into wwwroot/dist. Consumers of the published
+      # package never need it. The cache is the npm download cache, keyed on the lockfile; node_modules
+      # itself is absent on a fresh runner, so the csproj's `npm ci` runs every time regardless.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/Pondhawk.Blazor.CodeEditor/js/package-lock.json
+
+      - name: Compute prerelease version
+        id: version
+        run: |
+          set -euo pipefail
+
+          # Next patch, marked prerelease: with 1.4.2 released, CI builds 1.4.3-ci.<run>. NuGet orders
+          # every such build BELOW the eventual 1.4.3, so a CI package can never shadow a real release,
+          # and a consumer must opt into prereleases to see one at all.
+          version="$(.github/scripts/next-version.sh patch)-ci.${GITHUB_RUN_NUMBER}"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version"
+
+      # Pack depends on Test in the Cake pipeline, so this restores, builds, tests and packages in one
+      # step. Pull requests run it too: packaging is where the static-web-asset plumbing actually gets
+      # exercised, and a break there is invisible to the tests.
+      - name: Build, test and pack
+        run: ./build.sh --target Pack --packageVersion=${{ steps.version.outputs.version }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg-${{ steps.version.outputs.version }}
+          path: artifacts/*.nupkg
+          retention-days: 14
+
+      # Only from main. A fork's pull request has a read-only token and could not push anyway, but being
+      # explicit keeps the failure a skipped step rather than a confusing 403.
+      - name: Publish to GitHub Packages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          dotnet nuget push artifacts/*.nupkg \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" \
+            --skip-duplicate

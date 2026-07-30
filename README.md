@@ -110,6 +110,8 @@ already bundles, and the computation runs in the `editor.worker.js` the editor l
 
 ```
 Pondhawk.CodeEditor.slnx          all four projects
+.github/workflows/                CI and release
+.github/scripts/next-version.sh   the version bump, shared by both workflows
 src/Pondhawk.Blazor.CodeEditor/   RCL, NuGet-packable
   js/                             esbuild sources (Monaco + monaco-yaml + workers)
   wwwroot/dist/                   bundled output — build artifact, gitignored
@@ -187,6 +189,54 @@ dotnet test  Pondhawk.CodeEditor.slnx
 These skip Cake but not the JavaScript: the library's `BundleJs` target runs `BeforeBuild` either way, so
 a fresh clone still produces `wwwroot/dist`. Pass `-p:SkipJsBundle=true` where node is unavailable.
 
+## Publishing
+
+Two workflows, both driving `./build.sh` rather than re-implementing the build in YAML.
+
+| | Trigger | Feed | Version |
+|---|---|---|---|
+| `ci.yml` | push to `main`, and every PR | GitHub Packages | `1.4.3-ci.<run>` |
+| `release.yml` | manual, pick the bump | nuget.org (and GitHub Packages) | `1.4.3` |
+
+### Versions come from tags
+
+`.github/scripts/next-version.sh` reads the newest `vMAJOR.MINOR.PATCH` tag and applies the requested
+bump. Nothing in the repo records the version, so nothing can fall out of sync with what was published —
+the csproj keeps its `1.0.0` default, and CI always passes `--packageVersion` explicitly.
+
+```
+newest tag v1.4.2  →  patch 1.4.3   minor 1.5.0   major 2.0.0
+```
+
+Prerelease tags and non-version tags are skipped, so a `v1.5.0-rc1` never becomes the base to count from.
+With no tags at all the base is `0.0.0`, which makes **`major` the first release: 1.0.0**.
+
+CI publishes the *next patch* as a prerelease — `1.4.3-ci.87`. NuGet orders that below the eventual
+`1.4.3`, so a CI build can never occupy or shadow a real release, and consumers only see one if they opt
+into prereleases.
+
+### Releasing
+
+Run **Release to NuGet.org** from the Actions tab, choose `patch`/`minor`/`major`, and optionally tick
+**dry run** to build and pack without publishing anything. On a real run the order is: test → pack →
+push to nuget.org → mirror to GitHub Packages → tag the built commit and open a GitHub release.
+
+The push comes *before* the tag deliberately. A published package missing its tag is a one-command fix; a
+tag whose version was never published blocks retrying that version.
+
+Releases must run from `main`, and the workflow refuses a version whose tag already exists.
+
+### One-time setup
+
+- **`NUGET_API_KEY`** — a nuget.org API key, added as a repository secret. Nothing else is needed:
+  GitHub Packages authenticates with the built-in `GITHUB_TOKEN`.
+- `release.yml` references a `nuget.org` **environment**, created automatically on first run. Adding a
+  required reviewer to it makes every publish need approval — worth doing, since a version pushed to
+  nuget.org can be unlisted but never replaced or deleted.
+- Package metadata (`PackageLicenseExpression`, `RepositoryUrl`, readme) lives in the library csproj.
+  `RepositoryUrl` is not optional: GitHub Packages resolves package ownership from it and rejects the
+  push without it.
+
 ## Status
 
 Working, and proven in the demo: Monaco renders in Blazor WASM, typing round-trips through .NET without
@@ -197,4 +247,7 @@ render alongside the language service's own.
 pane, next/previous navigation, and the whitespace toggle collapsing a whitespace-only diff to zero
 changes.
 
-Not done: published to a feed, tested across hosting models other than WASM.
+Publishing is wired up but unexercised: no version has been tagged or pushed to either feed yet, so the
+first run of either workflow is also its first real test.
+
+Not done: tested across hosting models other than WASM.

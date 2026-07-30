@@ -19,6 +19,15 @@ public sealed class BuildContext : FrostingContext
 {
     public string Configuration { get; }
 
+    /// <summary>
+    /// The version to stamp, supplied by CI as <c>--packageVersion=1.2.3</c>.
+    ///
+    /// <para>Empty for a local build, where the csproj's own default applies. Releases are versioned from
+    /// git tags rather than from a number checked into the repo, so nothing here needs a default: only a
+    /// release knows what version it is publishing.</para>
+    /// </summary>
+    public string PackageVersion { get; }
+
     /// <summary>The solution, and the single source of truth for what this repo contains. Restore, Build
     /// and Test run against it, so a project added to the solution is picked up here without this file
     /// being edited — and cannot silently fall out of the build by being forgotten.</summary>
@@ -63,7 +72,26 @@ public sealed class BuildContext : FrostingContext
     public string ArtifactsDir => "artifacts";
 
     public BuildContext(ICakeContext context) : base(context)
-        => Configuration = context.Argument("configuration", "Release");
+    {
+        Configuration = context.Argument("configuration", "Release");
+        PackageVersion = context.Argument("packageVersion", string.Empty);
+    }
+
+    /// <summary>
+    /// MSBuild properties shared by Build and Pack.
+    ///
+    /// <para>Both must receive the same version. Pack runs with <c>NoBuild</c>, so a version given only to
+    /// Pack would produce a nuspec that disagrees with the assembly inside it.</para>
+    /// </summary>
+    public DotNetMSBuildSettings MsBuildSettings()
+    {
+        var settings = new DotNetMSBuildSettings();
+
+        if (!string.IsNullOrWhiteSpace(PackageVersion))
+            settings.WithProperty("Version", PackageVersion);
+
+        return settings;
+    }
 
     public int Npm(string args)
         => this.StartProcess("npm", new ProcessSettings { Arguments = args, WorkingDirectory = JsDir });
@@ -121,6 +149,7 @@ public sealed class BuildTask : FrostingTask<BuildContext>
         {
             Configuration = c.Configuration,
             NoRestore = true,
+            MSBuildSettings = c.MsBuildSettings(),
         });
 }
 
@@ -156,9 +185,11 @@ public sealed class PackTask : FrostingTask<BuildContext>
             Configuration = c.Configuration,
             NoBuild = true,
             OutputDirectory = c.ArtifactsDir,
+            MSBuildSettings = c.MsBuildSettings(),
         });
 
-        c.Information($"Package written to {c.ArtifactsDir}/");
+        var version = string.IsNullOrWhiteSpace(c.PackageVersion) ? "the project default" : c.PackageVersion;
+        c.Information($"Package written to {c.ArtifactsDir}/ at version {version}.");
     }
 }
 

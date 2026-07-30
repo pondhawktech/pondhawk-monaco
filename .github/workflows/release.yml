@@ -1,0 +1,142 @@
+name: Release to NuGet.org
+
+# Manually triggered. Pick which part of the version to increase; the new number is derived from the
+# newest v*.*.* tag, so the repo never carries a version number that has to be kept in sync by hand.
+#
+# A push to nuget.org is PERMANENT — a published version can be unlisted but never replaced or deleted.
+# Hence the dry run, the branch guard, and the check that the tag does not already exist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to increase'
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: 'Build and pack, print the version, publish nothing'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write   # create the tag and the GitHub release
+  packages: write   # mirror the released version to GitHub Packages
+
+concurrency:
+  group: release
+  cancel-in-progress: false   # never interrupt a run that may already have pushed
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    # Referencing an environment that does not exist yet creates it, unprotected. Add a required reviewer
+    # to it in repository settings to make every nuget.org push need a second pair of eyes.
+    environment: nuget.org
+
+    steps:
+      - name: Guard — releases come from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Release must run on main; this run targeted ${GITHUB_REF}."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags: the version source of truth
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/Pondhawk.Blazor.CodeEditor/js/package-lock.json
+
+      - name: Compute release version
+        id: version
+        env:
+          # Via the environment rather than inlined into the script. A `choice` input is constrained to
+          # its options so this one is safe either way, but interpolating inputs straight into a shell
+          # body is the habit that turns an unconstrained input into script injection.
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          version="$(.github/scripts/next-version.sh "$BUMP")"
+
+          # A tag that already exists means this version was released before. nuget.org would reject the
+          # duplicate anyway, but failing here says why instead of failing at the push with a 409.
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "::error::Tag v${version} already exists."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Releasing \`${version}\`"
+            echo ""
+            echo "- Bump: \`${BUMP}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Dry run: \`${{ inputs.dry_run }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Runs the full pipeline: restore, build, test, pack. Pack depends on Test, so a failing test stops
+      # the release before anything is published.
+      - name: Build, test and pack
+        run: ./build.sh --target Pack --packageVersion=${{ steps.version.outputs.version }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg-${{ steps.version.outputs.version }}
+          path: artifacts/*.nupkg
+
+      - name: Dry run — stop before publishing
+        if: inputs.dry_run
+        run: |
+          echo "Dry run: built ${{ steps.version.outputs.version }} and published nothing."
+          echo "The package is attached to this run as an artifact."
+
+      # nuget.org first, tag second. The reverse order can leave a tag claiming a version that was never
+      # published, which then blocks retrying that same version. A push that succeeds without its tag is
+      # the recoverable failure of the two.
+      #
+      # No --skip-duplicate here, unlike CI: on a feed where versions are permanent, a duplicate means
+      # something is wrong and should be loud.
+      - name: Publish to nuget.org
+        if: '!inputs.dry_run'
+        run: |
+          dotnet nuget push artifacts/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ secrets.NUGET_API_KEY }}"
+
+      - name: Mirror to GitHub Packages
+        if: '!inputs.dry_run'
+        run: |
+          dotnet nuget push artifacts/*.nupkg \
+            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" \
+            --skip-duplicate
+
+      # Creates the tag on the exact commit that was built — not on whatever main points at by now.
+      - name: Tag and create the GitHub release
+        if: '!inputs.dry_run'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "v${VERSION}" \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            artifacts/*.nupkg

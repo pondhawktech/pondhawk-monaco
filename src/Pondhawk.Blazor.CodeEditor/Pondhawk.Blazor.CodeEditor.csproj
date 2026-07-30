@@ -8,13 +8,41 @@
 
   <PropertyGroup>
     <PackageId>Pondhawk.Blazor.CodeEditor</PackageId>
+    <Authors>Pond Hawk Technologies Inc.</Authors>
+    <Copyright>Copyright (c) 2026 Pond Hawk Technologies Inc.</Copyright>
     <Description>Blazor code editor wrapping Monaco with JSON-Schema-driven completion for YAML and JSON. Consumers need no JavaScript toolchain.</Description>
     <PackageTags>blazor;monaco;editor;yaml;json-schema</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/pondhawktech/pondhawk-code-editor</PackageProjectUrl>
+
+    <!--
+      Required, not merely nice metadata: GitHub Packages resolves which repository owns a NuGet package
+      from this URL, and rejects the push outright when it is absent.
+    -->
+    <RepositoryUrl>https://github.com/pondhawktech/pondhawk-code-editor</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The npm toolchain is repo-only, and must not be packaged. The Razor SDK globs **/*.json as Content,
+      so without this the package ships js/package.json and js/package-lock.json as contentFiles — npm
+      manifests dropped into consuming projects whose whole reason for taking this package is not having
+      a JavaScript toolchain. The files stay on disk for the bundle step; they just stop being items.
+    -->
+    <Content Remove="js/**" />
+    <None Remove="js/**" />
   </ItemGroup>
 
   <ItemGroup>
