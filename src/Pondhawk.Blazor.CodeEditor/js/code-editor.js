@@ -21,13 +21,22 @@ let yamlConfigured = null;
 function configureWorkers(baseUrl) {
   if (workersReady) return;
 
-  const url = name => `${baseUrl.replace(/\/$/, '')}/${name}`;
+  const url = name => `${baseUrl.replace(/\/$/, '')}/${name}.worker.js`;
+
+  // Monaco dispatches by language LABEL, and several languages share one worker. A label routed to the
+  // wrong worker does not throw — it silently produces no completions or diagnostics for that language,
+  // so the mapping has to be complete rather than covering today's languages.
+  const byLabel = {
+    json: 'json',
+    css: 'css', scss: 'css', less: 'css',
+    html: 'html', handlebars: 'html', razor: 'html',
+    typescript: 'ts', javascript: 'ts',
+    yaml: 'yaml',
+  };
 
   self.MonacoEnvironment = {
     getWorker(_moduleId, label) {
-      if (label === 'yaml') return new Worker(url('yaml.worker.js'));
-      if (label === 'json') return new Worker(url('json.worker.js'));
-      return new Worker(url('editor.worker.js'));
+      return new Worker(url(byLabel[label] ?? 'editor'));
     },
   };
 
@@ -64,21 +73,26 @@ export function create(id, host, options) {
   configureWorkers(options.baseUrl);
   dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
 
-  const model = monaco.editor.createModel(options.value ?? '', options.language ?? 'yaml');
+  const model = monaco.editor.createModel(options.value ?? '', options.language ?? 'plaintext');
 
   const editor = monaco.editor.create(host, {
-    model,
-    theme: options.theme ?? 'vs',
-    readOnly: options.readOnly ?? false,
-    // Explicitly OFF. Monaco's built-in ResizeObserver can feed back inside overflow:hidden containers;
-    // layout is driven deliberately from .NET instead.
-    automaticLayout: false,
+    // Defaults chosen to be sensible for source editing generally, then overridden by whatever the
+    // caller passes. `editorOptions` is a raw Monaco IStandaloneEditorConstructionOptions bag so this
+    // component never becomes the bottleneck on Monaco's option surface.
     minimap: { enabled: options.minimap ?? false },
     scrollBeyondLastLine: false,
-    tabSize: 2,
+    tabSize: options.tabSize ?? 2,
     renderWhitespace: 'selection',
     fontSize: options.fontSize ?? 12.5,
     fixedOverflowWidgets: true,
+    theme: options.theme ?? 'vs',
+    readOnly: options.readOnly ?? false,
+    ...(options.editorOptions ?? {}),
+
+    // Not overridable. The model is ours to manage, and Monaco's built-in ResizeObserver feeds back
+    // inside overflow:hidden containers — layout is driven deliberately from .NET instead.
+    model,
+    automaticLayout: false,
   });
 
   const entry = { editor, model, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };

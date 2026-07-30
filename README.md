@@ -1,20 +1,30 @@
 # Pondhawk Code Editor
 
-A Blazor code-editor component wrapping **Monaco** with **JSON-Schema-driven completion and validation**
-for YAML and JSON, packaged so that consuming apps need **no JavaScript toolchain at all**.
+A general-purpose Blazor code editor wrapping **Monaco** — the editor behind VS Code — packaged so that
+consuming apps need **no JavaScript toolchain at all**.
 
 ```razor
-<CodeEditor @bind-Value="document"
-            Language="yaml"
-            Schema="@schemaJson"
-            Diagnostics="@diagnostics" />
+<CodeEditor @bind-Value="source" Language="csharp" />
+```
+
+Every language Monaco ships is available, with full language-service support (completion, diagnostics,
+hover) for the six that have one: **TypeScript/JavaScript, JSON, CSS/SCSS/LESS, HTML, and YAML**.
+Syntax highlighting covers the rest of Monaco's ~80 languages.
+
+**Optional JSON-Schema intelligence** for YAML and JSON, when a schema is supplied:
+
+```razor
+<CodeEditor @bind-Value="config" Language="yaml" Schema="@schemaJson" />
 ```
 
 ## Why this exists
 
-The gateway's config Editor is, at its core, a schema-aware YAML editor. Its most valuable authoring
-affordance is completion and validation driven by the JSON Schema generated from the gateway's contracts.
-No Blazor component library ships a code editor, so this is the piece that has to be owned.
+No Blazor component library ships a code editor — Telerik's `TextArea` is a plain input and its `Editor`
+is rich-text/HTML — so any Blazor app needing to edit source, config, queries or scripts has to own this
+integration. This is that integration, built once.
+
+Schema-driven YAML was the motivating case (a gateway config editor, where completion is driven by a
+JSON Schema generated from the app's own contracts), but the component is not specific to it.
 
 ## Why not BlazorMonaco
 
@@ -46,6 +56,19 @@ docs/                             design notes
 
 The npm/esbuild step exists **only in this repo**. Consumers get a NuGet package containing pre-bundled
 assets under `_content/Pondhawk.Blazor.CodeEditor/`.
+
+## On size
+
+The full bundle is large — Monaco is a large editor, and `ts.worker.js` alone is 5.7 MB because it
+contains the TypeScript compiler. This is mostly not a first-load cost:
+
+**Language workers load lazily.** Monaco fetches a language's worker only when a document of that
+language is first opened. An app that only edits YAML never downloads the TypeScript, CSS or HTML
+workers. What always loads is `code-editor.js` (3.7 MB) plus its CSS, and only when the component is
+first rendered — so put it behind a lazily-loaded page and it costs nothing until used.
+
+The main module carries Monaco's full language set deliberately, because this component serves many
+applications and cannot know which languages a consumer needs.
 
 ## Design constraints
 
