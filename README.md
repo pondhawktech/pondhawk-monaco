@@ -109,10 +109,13 @@ already bundles, and the computation runs in the `editor.worker.js` the editor l
 ## Layout
 
 ```
+Pondhawk.CodeEditor.slnx          all four projects
 src/Pondhawk.Blazor.CodeEditor/   RCL, NuGet-packable
   js/                             esbuild sources (Monaco + monaco-yaml + workers)
   wwwroot/dist/                   bundled output — build artifact, gitignored
+tests/…Tests/                     bUnit tests over the interop boundary
 demo/Pondhawk.CodeEditor.Demo/    Blazor WASM harness
+build/                            Cake Frosting build
 docs/                             design notes
 ```
 
@@ -152,12 +155,37 @@ Four things this component must get right, or it becomes something to fight rath
 ./build.sh --target Bundle  # Re-bundle Monaco into wwwroot/dist
 ./build.sh --target Pack    # NuGet package into artifacts/
 ./build.sh --target Demo    # Run the demo on http://localhost:5200
+./build.sh --target Clean   # Empty bin/, obj/, wwwroot/dist/ and artifacts/
 ```
 
 `Pack` depends on `Test`, not merely `Build`: the package embeds the bundled JavaScript, so shipping one
 that failed its tests would put a broken editor into every consuming app with no local signal.
 
 Node and npm are needed **only in this repo**, and only to produce `wwwroot/dist`.
+
+### The solution is the project list
+
+`Pondhawk.CodeEditor.slnx` holds all four projects, and the build reads them from it rather than keeping
+its own list — `Restore`, `Build` and `Test` run against the solution, and `Clean` parses it for the
+directories to empty. A project added to the solution is picked up by the build without `build/Program.cs`
+being touched, and cannot quietly fall out of CI by being forgotten in a second list.
+
+Two places still name a project directly, both deliberately:
+
+- **`Pack`** targets the library alone. The demo and the build project are ordinary non-packable
+  projects; packing the solution would emit nupkgs for them too.
+- **`Clean`** skips `build/`. Cake is executing out of `build/bin` while the target runs, and deleting a
+  loaded assembly is legal on Linux but fails outright on Windows.
+
+Because the solution exists, the usual root-level commands work directly:
+
+```bash
+dotnet build Pondhawk.CodeEditor.slnx
+dotnet test  Pondhawk.CodeEditor.slnx
+```
+
+These skip Cake but not the JavaScript: the library's `BundleJs` target runs `BeforeBuild` either way, so
+a fresh clone still produces `wwwroot/dist`. Pass `-p:SkipJsBundle=true` where node is unavailable.
 
 ## Status
 

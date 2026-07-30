@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Cake.Common;
 using Cake.Common.Diagnostics;
 using Cake.Common.IO;
@@ -18,11 +19,39 @@ public sealed class BuildContext : FrostingContext
 {
     public string Configuration { get; }
 
+    /// <summary>The solution, and the single source of truth for what this repo contains. Restore, Build
+    /// and Test run against it, so a project added to the solution is picked up here without this file
+    /// being edited — and cannot silently fall out of the build by being forgotten.</summary>
+    public string Solution => "Pondhawk.CodeEditor.slnx";
+
+    /// <summary>The packable project. Pack names it directly rather than running against the solution:
+    /// the demo and this build project are ordinary non-packable projects, and packing the solution would
+    /// emit nupkgs for them too.</summary>
     public string Library => "src/Pondhawk.Blazor.CodeEditor/Pondhawk.Blazor.CodeEditor.csproj";
-    public string Tests => "tests/Pondhawk.Blazor.CodeEditor.Tests/Pondhawk.Blazor.CodeEditor.Tests.csproj";
+
     public string Demo => "demo/Pondhawk.CodeEditor.Demo/Pondhawk.CodeEditor.Demo.csproj";
 
-    public string[] Projects => [Library, Tests, Demo];
+    /// <summary>This build project's own directory. Cake is executing out of <c>build/bin</c> whenever a
+    /// target runs, so it is the one directory Clean must leave alone.</summary>
+    private const string BuildProjectDir = "build";
+
+    /// <summary>
+    /// Directories whose bin/ and obj/ Clean empties, read out of the solution rather than listed again
+    /// here — a second list would be free to drift from the first.
+    ///
+    /// <para>Read from the solution rather than globbed: a <c>**/bin</c> pattern would reach into
+    /// <c>js/node_modules</c>, where emptying a package's bin/ breaks the npm install.</para>
+    ///
+    /// <para><see cref="BuildProjectDir"/> is excluded. Deleting the assembly Cake is currently running
+    /// from is legal on Linux and fails outright on Windows, where a loaded assembly is locked.</para>
+    /// </summary>
+    public IEnumerable<string> CleanableDirectories =>
+        XDocument.Load(Solution)
+            .Descendants("Project")
+            .Select(project => (string)project.Attribute("Path")!)
+            // .slnx records separators however the machine that added the project wrote them.
+            .Select(path => System.IO.Path.GetDirectoryName(path.Replace('\\', '/'))!)
+            .Where(dir => dir != BuildProjectDir);
 
     /// <summary>Where the JS sources live. The bundle step runs here, and nowhere else in the ecosystem —
     /// consumers of the package never need node.</summary>
@@ -45,9 +74,8 @@ public sealed class CleanTask : FrostingTask<BuildContext>
 {
     public override void Run(BuildContext c)
     {
-        foreach (var project in c.Projects)
+        foreach (var dir in c.CleanableDirectories)
         {
-            var dir = System.IO.Path.GetDirectoryName(project)!;
             c.CleanDirectories($"{dir}/bin");
             c.CleanDirectories($"{dir}/obj");
         }
@@ -81,10 +109,7 @@ public sealed class BundleTask : FrostingTask<BuildContext>
 [TaskName("Restore")]
 public sealed class RestoreTask : FrostingTask<BuildContext>
 {
-    public override void Run(BuildContext c)
-    {
-        foreach (var project in c.Projects) c.DotNetRestore(project);
-    }
+    public override void Run(BuildContext c) => c.DotNetRestore(c.Solution);
 }
 
 [TaskName("Build")]
@@ -92,22 +117,21 @@ public sealed class RestoreTask : FrostingTask<BuildContext>
 public sealed class BuildTask : FrostingTask<BuildContext>
 {
     public override void Run(BuildContext c)
-    {
-        foreach (var project in c.Projects)
-            c.DotNetBuild(project, new DotNetBuildSettings
-            {
-                Configuration = c.Configuration,
-                NoRestore = true,
-            });
-    }
+        => c.DotNetBuild(c.Solution, new DotNetBuildSettings
+        {
+            Configuration = c.Configuration,
+            NoRestore = true,
+        });
 }
 
+/// <summary>Runs every test project in the solution — so a second one added later is run without this
+/// task being told about it.</summary>
 [TaskName("Test")]
 [IsDependentOn(typeof(BuildTask))]
 public sealed class TestTask : FrostingTask<BuildContext>
 {
     public override void Run(BuildContext c)
-        => c.DotNetTest(c.Tests, new DotNetTestSettings
+        => c.DotNetTest(c.Solution, new DotNetTestSettings
         {
             Configuration = c.Configuration,
             NoBuild = true,

@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/build/">
+    <Project Path="build/Build.csproj" />
+  </Folder>
+  <Folder Name="/demo/">
+    <Project Path="demo/Pondhawk.CodeEditor.Demo/Pondhawk.CodeEditor.Demo.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Pondhawk.Blazor.CodeEditor/Pondhawk.Blazor.CodeEditor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pondhawk.Blazor.CodeEditor.Tests/Pondhawk.Blazor.CodeEditor.Tests.csproj" />
+  </Folder>
+</Solution>
