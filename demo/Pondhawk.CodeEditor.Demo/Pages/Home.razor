@@ -1,7 +1,201 @@
-﻿@page "/"
+@page "/"
+@using Pondhawk.Blazor.CodeEditor
+@inject HttpClient Http
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Pondhawk CodeEditor — demo</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="demo">
+    <header>
+        <strong>Pondhawk.Blazor.CodeEditor</strong>
+        <span class="sub">Monaco in Blazor WASM · no JS toolchain in this app</span>
+    </header>
 
-Welcome to your new app.
+    <div class="body">
+        <div class="editor-pane">
+            <CodeEditor @ref="_editor"
+                        Value="@_document"
+                        ValueChanged="OnDocumentChanged"
+                        Language="@_language"
+                        Theme="@_theme"
+                        Schema="@_schema"
+                        Diagnostics="@_markers"
+                        Style="height:100%" />
+        </div>
+
+        <aside class="panel">
+            <label>Language</label>
+            <select @onchange="OnLanguageChanged" value="@_language">
+                @foreach (var lang in Languages)
+                {
+                    <option value="@lang.Id">@lang.Label</option>
+                }
+            </select>
+
+            <label>Theme</label>
+            <select @onchange="@(e => _theme = e.Value?.ToString() ?? "vs")" value="@_theme">
+                <option value="vs">vs</option>
+                <option value="vs-dark">vs-dark</option>
+                <option value="hc-black">hc-black</option>
+            </select>
+
+            <hr />
+
+            @* Proves two-way binding is live. If the caret ever jumps while typing, the echo guard
+               has regressed — this counter updating without the editor misbehaving is the evidence. *@
+            <label>Bound value</label>
+            <div class="stat">@_document.Length chars · @LineCount lines</div>
+            <div class="stat muted">changes seen: @_changeCount</div>
+
+            <hr />
+
+            <label>Host diagnostics</label>
+            <button @onclick="AddMarker">Mark line 3 as error</button>
+            <button @onclick="ClearMarkers">Clear</button>
+            <button @onclick="() => _editor?.RevealLineAsync(3)">Reveal line 3</button>
+
+            <hr />
+            <label>Schema</label>
+            <div class="stat muted">
+                @(_schema is null ? "not loaded" : $"gateway-config.schema.json ({_schema.Length / 1024} KB)")
+            </div>
+            <p class="hint">
+                In <code>yaml</code> or <code>json</code>, press <kbd>Ctrl</kbd>+<kbd>Space</kbd> on a blank
+                line to see completions driven by the schema.
+            </p>
+        </aside>
+    </div>
+</div>
+
+@code {
+    private record Lang(string Id, string Label, string Sample);
+
+    private CodeEditor? _editor;
+    private string _language = "yaml";
+    private string _theme = "vs";
+    private string? _schema;
+    private string _document = "";
+    private int _changeCount;
+    private IReadOnlyList<EditorMarker>? _markers;
+
+    private int LineCount => _document.Count(c => c == '\n') + 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _document = Languages[0].Sample;
+
+        // A real, non-trivial schema — the gateway's, generated from its C# contracts.
+        try { _schema = await Http.GetStringAsync("gateway-config.schema.json"); }
+        catch (Exception ex) { Console.Error.WriteLine($"schema load failed: {ex.Message}"); }
+    }
+
+    // Counts real edits arriving from the editor. Watching this tick while the caret stays put is the
+    // visible proof that the binding round-trips without echoing back into the document.
+    private void OnDocumentChanged(string value)
+    {
+        _document = value;
+        _changeCount++;
+    }
+
+    private void OnLanguageChanged(ChangeEventArgs e)
+    {
+        _language = e.Value?.ToString() ?? "plaintext";
+        _document = Languages.First(l => l.Id == _language).Sample;
+        _markers = null;
+    }
+
+    private void AddMarker() => _markers =
+    [
+        new EditorMarker
+        {
+            StartLine = 3, StartColumn = 1, EndLine = 3, EndColumn = 40,
+            Message = "Example diagnostic supplied by the host application.",
+            Severity = MarkerSeverity.Error,
+            Source = "demo",
+        },
+    ];
+
+    private void ClearMarkers() => _markers = [];
+
+    private static readonly Lang[] Languages =
+    [
+        new("yaml", "YAML (schema-aware)", """
+            # Schema-driven: Ctrl+Space suggests properties from the gateway's JSON Schema.
+            ContractsVersion: "0.1.0"
+
+            Routes:
+              - Id: api
+                Match:
+                  Path: "/api"
+                Auth: Bearer
+                Upstream:
+                  Destination: "http://localhost:5011"
+            """),
+        new("json", "JSON (schema-aware)", """
+            {
+              "ContractsVersion": "0.1.0",
+              "Routes": [
+                { "Id": "api", "Match": { "Path": "/api" }, "Auth": "Bearer" }
+              ]
+            }
+            """),
+        new("csharp", "C# (highlighting only)", """
+            // Monaco has no C# language service — highlighting, bracket matching
+            // and comment toggling, but no IntelliSense.
+            public sealed record Route(string Id, string Path)
+            {
+                public bool Matches(string candidate) =>
+                    candidate.StartsWith(Path, StringComparison.OrdinalIgnoreCase);
+            }
+            """),
+        new("sql", "SQL (highlighting only)", """
+            SELECT r.id, r.path, count(*) AS hits
+            FROM routes r
+            JOIN requests q ON q.route_id = r.id
+            WHERE q.received_at >= now() - interval '1 day'
+            GROUP BY r.id, r.path
+            ORDER BY hits DESC;
+            """),
+        new("markdown", "Markdown (highlighting only)", """
+            # Pondhawk CodeEditor
+
+            A Blazor wrapper over **Monaco**.
+
+            - No JS toolchain in the consuming app
+            - Schema-driven completion for YAML and JSON
+            """),
+        new("xml", "XML (highlighting only)", """
+            <Project Sdk="Microsoft.NET.Sdk.Razor">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """),
+        new("typescript", "TypeScript (full service)", """
+            // TypeScript HAS a language service — hover a symbol, or type a dot.
+            interface Route { id: string; path: string; }
+
+            const match = (routes: Route[], p: string): Route | undefined =>
+                routes.find(r => p.startsWith(r.path));
+            """),
+    ];
+}
+
+<style>
+    html, body, app, .demo { height: 100%; margin: 0; }
+    .demo { display: flex; flex-direction: column; font-family: system-ui, sans-serif; }
+    header { display: flex; align-items: baseline; gap: .75rem; padding: .6rem 1rem;
+             border-bottom: 1px solid #d8dbe0; background: #fafbfc; flex: 0 0 auto; }
+    .sub { color: #6b7280; font-size: .85rem; }
+    .body { flex: 1 1 auto; display: flex; min-height: 0; }
+    .editor-pane { flex: 1 1 auto; min-width: 0; }
+    .panel { width: 300px; flex: 0 0 auto; border-left: 1px solid #d8dbe0; padding: 1rem;
+             display: flex; flex-direction: column; gap: .35rem; overflow-y: auto; }
+    .panel label { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: #6b7280;
+                   margin-top: .5rem; }
+    .panel select, .panel button { padding: .35rem .5rem; font: inherit; }
+    .panel button { cursor: pointer; text-align: left; }
+    .stat { font-variant-numeric: tabular-nums; font-size: .9rem; }
+    .muted { color: #6b7280; }
+    .hint { font-size: .8rem; color: #6b7280; line-height: 1.4; }
+    hr { border: 0; border-top: 1px solid #e5e7eb; width: 100%; margin: .6rem 0 0; }
+</style>
