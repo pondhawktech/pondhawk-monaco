@@ -54,6 +54,24 @@ This is the capability that motivated the project. Monaco's built-in JSON servic
 `monaco-yaml` handles `yaml`. Both are driven from the same schema text, so a document can be edited in
 either format against one contract.
 
+### Gotcha: the `$schema` modeline wins
+
+A YAML document whose first line carries a language-server modeline —
+
+```yaml
+# yaml-language-server: $schema=../../schema/my-schema.json
+```
+
+— has its schema association taken from **that line**, overriding whatever is passed to `Schema`. If the
+URL is relative and does not resolve against the serving origin, the language service quietly falls back
+to word-based suggestions: no error, no diagnostic, just completion that lists words already in the
+document instead of schema properties.
+
+This is easy to miss because the fallback looks like working completion. The tell is the icon — schema
+properties carry a property glyph, word suggestions carry `abc`.
+
+Either strip the modeline and rely on `Schema`, or point it at a URL the app actually serves.
+
 ## Layout
 
 ```
