@@ -118,6 +118,10 @@ export function create(id, host, options) {
   const entry = { editor, model, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };
   editors.set(id, entry);
 
+  // Stamp the registry key onto the host. Nothing reads it at runtime — it exists so a live page can be
+  // inspected from the devtools console, where the id is otherwise unreachable.
+  host.dataset.pondhawkEditor = id;
+
   entry.subscriptions.push(model.onDidChangeContent(() => {
     entry.revision++;
     if (!entry.dotNet) return;
@@ -248,6 +252,7 @@ export function createDiff(id, host, options) {
   });
 
   editor.setModel({ original, modified });
+  host.dataset.pondhawkEditor = id;   // see create()
 
   const entry = { editor, original, modified, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };
   diffs.set(id, entry);
