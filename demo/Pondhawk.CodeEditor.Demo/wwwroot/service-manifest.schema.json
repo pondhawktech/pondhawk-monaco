@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pondhawk.tech/schemas/demo/service-manifest.schema.json",
+  "title": "Service Manifest",
+  "description": "A deliberately generic schema for demonstrating schema-driven editing. Nested objects, arrays, enums and constrained numbers, so completion and validation have something real to work against.",
+  "type": "object",
+  "required": ["name", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Service name. Lowercase, hyphen-separated.",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version, e.g. 1.4.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "description": { "type": "string" },
+    "runtime": {
+      "type": "object",
+      "description": "How the service is executed.",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Execution model.",
+          "enum": ["container", "process", "serverless"]
+        },
+        "image": { "type": "string", "description": "Container image reference." },
+        "replicas": {
+          "type": "integer",
+          "description": "Instance count.",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "cpu": { "type": "string", "description": "CPU request, e.g. 500m" },
+            "memory": { "type": "string", "description": "Memory request, e.g. 512Mi" }
+          }
+        }
+      }
+    },
+    "endpoints": {
+      "type": "array",
+      "description": "Network endpoints the service exposes.",
+      "items": {
+        "type": "object",
+        "required": ["name", "port"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "protocol": {
+            "type": "string",
+            "description": "Wire protocol.",
+            "enum": ["http", "https", "grpc", "tcp"],
+            "default": "http"
+          },
+          "public": {
+            "type": "boolean",
+            "description": "Whether the endpoint is reachable from outside the cluster.",
+            "default": false
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Environment variables, as name/value pairs.",
+      "additionalProperties": { "type": "string" }
+    },
+    "healthCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "default": "/health" },
+        "intervalSeconds": { "type": "integer", "minimum": 1, "default": 30 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "default": 5 }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "Free-form labels.",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    }
+  }
+}

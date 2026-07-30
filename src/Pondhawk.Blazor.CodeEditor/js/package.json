@@ -2,7 +2,7 @@
   "name": "pondhawk-code-editor-bundle",
   "private": true,
   "type": "module",
-  "description": "Bundles Monaco + monaco-yaml into wwwroot/dist so consumers need no JS toolchain.",
+  "description": "Bundles Monaco + monaco-yaml into wwwroot/dist so consumers need no JS toolchain. Versions are pinned exactly: monaco-yaml is tightly coupled to Monaco internals, so a floating Monaco can break the YAML language service in ways that only surface at runtime.",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch"

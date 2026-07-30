@@ -19,12 +19,9 @@ Syntax highlighting covers the rest of Monaco's ~80 languages.
 
 ## Why this exists
 
-No Blazor component library ships a code editor — Telerik's `TextArea` is a plain input and its `Editor`
-is rich-text/HTML — so any Blazor app needing to edit source, config, queries or scripts has to own this
-integration. This is that integration, built once.
-
-Schema-driven YAML was the motivating case (a gateway config editor, where completion is driven by a
-JSON Schema generated from the app's own contracts), but the component is not specific to it.
+No Blazor component library ships a code editor, so any Blazor app needing to edit source, config,
+queries or scripts has to own the Monaco integration itself — the ESM bundle, the worker plumbing, the
+disposal discipline, the binding semantics. This is that integration, built once and packaged.
 
 ## Why not BlazorMonaco
 
@@ -37,12 +34,25 @@ It is not used directly because it loads Monaco through the **AMD loader**
 **ESM-only and bundler-dependent** — the package ships no `esm/` build. The two cannot be combined
 cleanly, and schema-driven YAML is the entire point here.
 
-BlazorMonaco does ship Monaco's built-in JSON worker, so it gives schema intelligence in *JSON* mode.
-That was rejected as a workaround: the gateway's configs are authored in YAML.
+BlazorMonaco does ship Monaco's built-in JSON worker, so it gives schema intelligence in *JSON* mode
+only. That was rejected as a workaround — telling a consumer "your schema works, but only if you author
+in JSON" is not a general-purpose editor.
 
-Pinning an older `monaco-yaml` with an AMD build was also rejected — `monaco-yaml` v5 dropping AMD is the
-ecosystem signalling its direction, and it would mean running a different version than the existing
-Angular editor does.
+Pinning an older `monaco-yaml` with an AMD build was also rejected. `monaco-yaml` v5 dropping AMD is the
+ecosystem signalling its direction, and building on the path being deprecated buys a shortcut now for a
+migration later.
+
+## Schema-driven editing
+
+Supply a JSON Schema and YAML and JSON gain completion, hover documentation and validation:
+
+```razor
+<CodeEditor @bind-Value="manifest" Language="yaml" Schema="@schemaJson" />
+```
+
+This is the capability that motivated the project. Monaco's built-in JSON service handles `json`;
+`monaco-yaml` handles `yaml`. Both are driven from the same schema text, so a document can be edited in
+either format against one contract.
 
 ## Layout
 
@@ -83,6 +93,24 @@ Four things this component must get right, or it becomes something to fight rath
 4. **No binding echo** — changes originating in JS must not be pushed back into the model, or the caret
    jumps mid-typing. Guarded with a revision counter.
 
+## Building
+
+```bash
+./build.sh                  # Build + Test (default)
+./build.sh --target Bundle  # Re-bundle Monaco into wwwroot/dist
+./build.sh --target Pack    # NuGet package into artifacts/
+./build.sh --target Demo    # Run the demo on http://localhost:5200
+```
+
+`Pack` depends on `Test`, not merely `Build`: the package embeds the bundled JavaScript, so shipping one
+that failed its tests would put a broken editor into every consuming app with no local signal.
+
+Node and npm are needed **only in this repo**, and only to produce `wwwroot/dist`.
+
 ## Status
 
-Scaffolded. Not yet implemented.
+Working, and proven in the demo: Monaco renders in Blazor WASM, typing round-trips through .NET without
+the caret jumping, schema-driven completion fires from a supplied JSON Schema, and host diagnostics
+render alongside the language service's own.
+
+Not done: published to a feed, tested across hosting models other than WASM.

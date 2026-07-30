@@ -56,7 +56,7 @@
             <hr />
             <label>Schema</label>
             <div class="stat muted">
-                @(_schema is null ? "not loaded" : $"gateway-config.schema.json ({_schema.Length / 1024} KB)")
+                @(_schema is null ? "not loaded" : $"service-manifest.schema.json ({_schema.Length / 1024} KB)")
             </div>
             <p class="hint">
                 In <code>yaml</code> or <code>json</code>, press <kbd>Ctrl</kbd>+<kbd>Space</kbd> on a blank
@@ -83,8 +83,9 @@
     {
         _document = Languages[0].Sample;
 
-        // A real, non-trivial schema — the gateway's, generated from its C# contracts.
-        try { _schema = await Http.GetStringAsync("gateway-config.schema.json"); }
+        // A non-trivial schema — nested objects, arrays, enums and constrained numbers — so
+        // completion and validation have something real to work against.
+        try { _schema = await Http.GetStringAsync("service-manifest.schema.json"); }
         catch (Exception ex) { Console.Error.WriteLine($"schema load failed: {ex.Message}"); }
     }
 
@@ -119,41 +120,47 @@
     private static readonly Lang[] Languages =
     [
         new("yaml", "YAML (schema-aware)", """
-            # Schema-driven: Ctrl+Space suggests properties from the gateway's JSON Schema.
-            ContractsVersion: "0.1.0"
+            # Schema-driven. Ctrl+Space on a blank line suggests properties;
+            # hover a key for its description; invalid values are underlined.
+            name: billing-api
+            version: 1.4.0
 
-            Routes:
-              - Id: api
-                Match:
-                  Path: "/api"
-                Auth: Bearer
-                Upstream:
-                  Destination: "http://localhost:5011"
+            runtime:
+              kind: container
+              image: registry.example.com/billing-api:1.4.0
+              replicas: 3
+
+            endpoints:
+              - name: public
+                port: 8080
+                protocol: https
+                public: true
             """),
         new("json", "JSON (schema-aware)", """
             {
-              "ContractsVersion": "0.1.0",
-              "Routes": [
-                { "Id": "api", "Match": { "Path": "/api" }, "Auth": "Bearer" }
+              "name": "billing-api",
+              "version": "1.4.0",
+              "runtime": { "kind": "container", "replicas": 3 },
+              "endpoints": [
+                { "name": "public", "port": 8080, "protocol": "https" }
               ]
             }
             """),
         new("csharp", "C# (highlighting only)", """
             // Monaco has no C# language service — highlighting, bracket matching
             // and comment toggling, but no IntelliSense.
-            public sealed record Route(string Id, string Path)
+            public sealed record Endpoint(string Name, int Port, string Protocol = "http")
             {
-                public bool Matches(string candidate) =>
-                    candidate.StartsWith(Path, StringComparison.OrdinalIgnoreCase);
+                public string Url(string host) => $"{Protocol}://{host}:{Port}";
             }
             """),
         new("sql", "SQL (highlighting only)", """
-            SELECT r.id, r.path, count(*) AS hits
-            FROM routes r
-            JOIN requests q ON q.route_id = r.id
-            WHERE q.received_at >= now() - interval '1 day'
-            GROUP BY r.id, r.path
-            ORDER BY hits DESC;
+            SELECT s.name, e.protocol, count(*) AS calls
+            FROM services s
+            JOIN endpoints e ON e.service_id = s.id
+            WHERE e.public AND s.updated_at >= now() - interval '7 days'
+            GROUP BY s.name, e.protocol
+            ORDER BY calls DESC;
             """),
         new("markdown", "Markdown (highlighting only)", """
             # Pondhawk CodeEditor
@@ -172,10 +179,10 @@
             """),
         new("typescript", "TypeScript (full service)", """
             // TypeScript HAS a language service — hover a symbol, or type a dot.
-            interface Route { id: string; path: string; }
+            interface Endpoint { name: string; port: number; protocol?: string; }
 
-            const match = (routes: Route[], p: string): Route | undefined =>
-                routes.find(r => p.startsWith(r.path));
+            const url = (host: string, e: Endpoint): string =>
+                `${e.protocol ?? "http"}://${host}:${e.port}`;
             """),
     ];
 }
