@@ -1,0 +1,17 @@
+{
+  "name": "pondhawk-code-editor-bundle",
+  "private": true,
+  "type": "module",
+  "description": "Bundles Monaco + monaco-yaml into wwwroot/dist so consumers need no JS toolchain.",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "dependencies": {
+    "monaco-editor": "0.52.2",
+    "monaco-yaml": "^5.5.1"
+  }
+}

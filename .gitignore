@@ -17,3 +17,4 @@ src/Pondhawk.Blazor.CodeEditor/wwwroot/dist/
 .idea/
 *.swp
 .DS_Store
+artifacts/

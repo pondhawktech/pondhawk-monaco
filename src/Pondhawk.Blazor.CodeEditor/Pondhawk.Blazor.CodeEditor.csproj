@@ -6,6 +6,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <PackageId>Pondhawk.Blazor.CodeEditor</PackageId>
+    <Description>Blazor code editor wrapping Monaco with JSON-Schema-driven completion for YAML and JSON. Consumers need no JavaScript toolchain.</Description>
+    <PackageTags>blazor;monaco;editor;yaml;json-schema</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
@@ -14,5 +20,34 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.9" />
   </ItemGroup>
+
+  <!--
+    wwwroot/dist is a build artifact and is deliberately NOT in source control, so the build must be able
+    to regenerate it — otherwise a fresh clone produces a package with no JavaScript in it, and the
+    failure only shows up at runtime in the consuming app.
+
+    Inputs/Outputs give MSBuild incremental behaviour: the (slow) bundle re-runs only when the JS sources
+    change. Set SkipJsBundle=true to bypass it in environments without node.
+  -->
+  <Target Name="BundleJs"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(SkipJsBundle)' != 'true'"
+          Inputs="js/code-editor.js;js/build.mjs;js/package.json"
+          Outputs="wwwroot/dist/code-editor.js">
+    <Message Importance="high" Text="Bundling Monaco + monaco-yaml -> wwwroot/dist" />
+    <Exec Command="npm ci --no-audit --no-fund" WorkingDirectory="js" Condition="!Exists('js/node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="js" />
+  </Target>
+
+  <!--
+    The bundle is produced during THIS build, so it is not yet known to the static-web-assets machinery
+    when items are first evaluated. Re-globbing after bundling is what gets dist/ into the package as
+    _content/Pondhawk.Blazor.CodeEditor/dist/.
+  -->
+  <Target Name="IncludeBundledAssets" AfterTargets="BundleJs" BeforeTargets="ResolveStaticWebAssetsInputs">
+    <ItemGroup>
+      <Content Include="wwwroot/dist/**" Exclude="@(Content)" />
+    </ItemGroup>
+  </Target>
 
 </Project>

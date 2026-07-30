@@ -1,0 +1,176 @@
+// The JS half of the CodeEditor component.
+//
+// DESIGN: JavaScript owns the document. Blazor is told about changes on a debounce, and pushes text back
+// only when the change did not originate here. Round-tripping every keystroke across interop is the
+// mistake that makes embedded editors feel laggy — in Blazor Server it is a network hop per character.
+
+import * as monaco from 'monaco-editor';
+import { configureMonacoYaml } from 'monaco-yaml';
+
+/** id -> { editor, model, dotNet, revision, changeTimer, subscriptions } */
+const editors = new Map();
+
+let workersReady = false;
+let yamlConfigured = null;
+
+/**
+ * Point Monaco's worker loader at our own assets. The base path is supplied by .NET rather than guessed:
+ * it differs between hosting models and base-href configurations, and a wrong guess fails only at the
+ * moment the language service is first needed — long after startup, where it is hard to diagnose.
+ */
+function configureWorkers(baseUrl) {
+  if (workersReady) return;
+
+  const url = name => `${baseUrl.replace(/\/$/, '')}/${name}`;
+
+  self.MonacoEnvironment = {
+    getWorker(_moduleId, label) {
+      if (label === 'yaml') return new Worker(url('yaml.worker.js'));
+      if (label === 'json') return new Worker(url('json.worker.js'));
+      return new Worker(url('editor.worker.js'));
+    },
+  };
+
+  workersReady = true;
+}
+
+/**
+ * Register a JSON Schema for both YAML (monaco-yaml) and JSON (Monaco's built-in service).
+ * Called again whenever the schema changes; monaco-yaml's configure returns a disposable we replace.
+ */
+export function configureSchema(schemaJson, fileMatch) {
+  const schema = typeof schemaJson === 'string' ? JSON.parse(schemaJson) : schemaJson;
+  const match = fileMatch?.length ? fileMatch : ['*'];
+  const uri = 'https://pondhawk.local/schema.json';
+
+  monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+    validate: true,
+    enableSchemaRequest: false,
+    schemas: [{ uri, fileMatch: match, schema }],
+  });
+
+  yamlConfigured?.dispose();
+  yamlConfigured = configureMonacoYaml(monaco, {
+    enableSchemaRequest: false,
+    validate: true,
+    format: true,
+    hover: true,
+    completion: true,
+    schemas: [{ uri, fileMatch: match, schema }],
+  });
+}
+
+export function create(id, host, options) {
+  configureWorkers(options.baseUrl);
+  dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
+
+  const model = monaco.editor.createModel(options.value ?? '', options.language ?? 'yaml');
+
+  const editor = monaco.editor.create(host, {
+    model,
+    theme: options.theme ?? 'vs',
+    readOnly: options.readOnly ?? false,
+    // Explicitly OFF. Monaco's built-in ResizeObserver can feed back inside overflow:hidden containers;
+    // layout is driven deliberately from .NET instead.
+    automaticLayout: false,
+    minimap: { enabled: options.minimap ?? false },
+    scrollBeyondLastLine: false,
+    tabSize: 2,
+    renderWhitespace: 'selection',
+    fontSize: options.fontSize ?? 12.5,
+    fixedOverflowWidgets: true,
+  });
+
+  const entry = { editor, model, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };
+  editors.set(id, entry);
+
+  entry.subscriptions.push(model.onDidChangeContent(() => {
+    entry.revision++;
+    if (!entry.dotNet) return;
+
+    clearTimeout(entry.changeTimer);
+    entry.changeTimer = setTimeout(() => {
+      // Send the revision so .NET can tell its own echo apart from a genuine user edit.
+      entry.dotNet.invokeMethodAsync('OnDocumentChanged', model.getValue(), entry.revision);
+    }, options.debounceMs ?? 300);
+  }));
+
+  editor.layout();
+  return true;
+}
+
+export function attach(id, dotNetRef) {
+  const entry = editors.get(id);
+  if (entry) entry.dotNet = dotNetRef;
+}
+
+export function getValue(id) {
+  return editors.get(id)?.model.getValue() ?? '';
+}
+
+/**
+ * Push text in from .NET. No-op when the value already matches, which is what stops the caret from
+ * jumping when .NET echoes back the value it was just handed.
+ */
+export function setValue(id, value) {
+  const entry = editors.get(id);
+  if (!entry || entry.model.getValue() === value) return;
+
+  // pushEditOperations rather than setValue: preserves undo history and cursor position.
+  entry.model.pushEditOperations(
+    [],
+    [{ range: entry.model.getFullModelRange(), text: value }],
+    () => null);
+}
+
+export function setLanguage(id, language) {
+  const entry = editors.get(id);
+  if (entry) monaco.editor.setModelLanguage(entry.model, language);
+}
+
+/**
+ * Replace OUR diagnostics without touching the language service's own. The owner key namespaces them,
+ * so schema errors from monaco-yaml and rule violations from the host app coexist.
+ */
+export function setMarkers(id, markers) {
+  const entry = editors.get(id);
+  if (!entry) return;
+
+  monaco.editor.setModelMarkers(entry.model, 'pondhawk', (markers ?? []).map(m => ({
+    startLineNumber: m.startLine, startColumn: m.startColumn,
+    endLineNumber: m.endLine, endColumn: m.endColumn,
+    message: m.message,
+    severity: m.severity === 'warning'
+      ? monaco.MarkerSeverity.Warning
+      : m.severity === 'info' ? monaco.MarkerSeverity.Info : monaco.MarkerSeverity.Error,
+    source: m.source,
+  })));
+}
+
+export function revealLine(id, lineNumber, column) {
+  const entry = editors.get(id);
+  if (!entry) return;
+  entry.editor.revealLineInCenter(lineNumber);
+  entry.editor.setPosition({ lineNumber, column: column ?? 1 });
+  entry.editor.focus();
+}
+
+export function layout(id) {
+  editors.get(id)?.editor.layout();
+}
+
+export function setTheme(theme) {
+  monaco.editor.setTheme(theme);
+}
+
+export function dispose(id) {
+  const entry = editors.get(id);
+  if (!entry) return;
+
+  clearTimeout(entry.changeTimer);
+  entry.subscriptions.forEach(s => s.dispose());
+  entry.editor.dispose();
+  entry.model.dispose();
+  // The DotNetObjectReference is disposed on the .NET side; dropping it here only releases our handle.
+  editors.delete(id);
+}
