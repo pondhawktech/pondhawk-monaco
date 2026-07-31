@@ -19,6 +19,9 @@
                         Theme="@_theme"
                         Schema="@_schema"
                         Diagnostics="@_markers"
+                        ReadOnly="@_readOnly"
+                        TabSize="@_tabSize"
+                        FontSize="@_fontSize"
                         Style="height:100%" />
         </div>
 
@@ -54,6 +57,38 @@
             <button @onclick="() => _editor?.RevealLineAsync(3)">Reveal line 3</button>
 
             <hr />
+
+            @* Live options. These were construction-only until updateOptions was wired up: toggling
+               them did nothing at all. If a change here stops taking effect, that has regressed. *@
+            <label>Live options</label>
+            <label class="inline">
+                <input type="checkbox" checked="@_readOnly"
+                       @onchange="e => _readOnly = (bool)(e.Value ?? false)" /> Read-only
+            </label>
+            <label class="inline">Tab size
+                <select @onchange="OnTabSizeChanged" value="@_tabSize">
+                    <option value="2">2</option>
+                    <option value="4">4</option>
+                    <option value="8">8</option>
+                </select>
+            </label>
+            <label class="inline">Font
+                <select @onchange="OnFontSizeChanged" value="@_fontSize">
+                    <option value="12.5">12.5</option>
+                    <option value="16">16</option>
+                    <option value="20">20</option>
+                </select>
+            </label>
+
+            <hr />
+
+            <label>Editor API</label>
+            <button @onclick="Format">Format document</button>
+            <button @onclick="() => _editor?.FocusAsync()">Focus</button>
+            <button @onclick="ShowCursor">Where is the caret?</button>
+            <div class="stat muted">@_cursor</div>
+
+            <hr />
             <label>Schema</label>
             <div class="stat muted">
                 @(_schema is null ? "not loaded" : $"service-manifest.schema.json ({_schema.Length / 1024} KB)")
@@ -70,6 +105,40 @@
     private record Lang(string Id, string Label, string Sample);
 
     private CodeEditor? _editor;
+    private bool _readOnly;
+    private int _tabSize = 2;
+    private double _fontSize = 12.5;
+    private string _cursor = "—";
+
+    private void OnTabSizeChanged(ChangeEventArgs e) =>
+        _tabSize = int.TryParse(e.Value?.ToString(), out var n) ? n : 2;
+
+    private void OnFontSizeChanged(ChangeEventArgs e) =>
+        _fontSize = double.TryParse(e.Value?.ToString(), out var n) ? n : 12.5;
+
+    private async Task Format()
+    {
+        if (_editor is null) return;
+
+        // RunActionAsync reports whether Monaco recognised the id, so a typo is visible rather than
+        // a silent no-op. Not every language has a formatter — YAML and JSON do here.
+        var ran = await _editor.RunActionAsync("editor.action.formatDocument");
+        _cursor = ran ? "formatted" : "no formatter for this language";
+    }
+
+    private async Task ShowCursor()
+    {
+        var p = _editor is null ? null : await _editor.GetPositionAsync();
+        var s = _editor is null ? null : await _editor.GetSelectionAsync();
+
+        _cursor = p is null
+            ? "no cursor"
+            : $"Ln {p.Line}, Col {p.Column}"
+              + (s is null || (s.StartLine == s.EndLine && s.StartColumn == s.EndColumn)
+                  ? ""
+                  : $" · selected {s.StartLine}:{s.StartColumn}–{s.EndLine}:{s.EndColumn}");
+    }
+
     private string _language = "yaml";
     private string _theme = "vs";
     private string? _schema;
@@ -206,6 +275,9 @@
                    margin-top: .5rem; }
     .panel select, .panel button { padding: .35rem .5rem; font: inherit; }
     .panel button { cursor: pointer; text-align: left; }
+    .panel label.inline { display: flex; align-items: center; gap: .4rem; margin-top: .2rem;
+                          text-transform: none; letter-spacing: 0; font-size: .85rem; color: inherit; }
+    .panel label.inline select { margin-left: auto; }
     .stat { font-variant-numeric: tabular-nums; font-size: .9rem; }
     .muted { color: #6b7280; }
     .hint { font-size: .8rem; color: #6b7280; line-height: 1.4; }

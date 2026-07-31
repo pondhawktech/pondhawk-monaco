@@ -163,12 +163,22 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Everything that can change on a live diff. Compared by value, so an unchanged render pushes
+    /// nothing; <see cref="EditorOptions"/> compares by reference, so hold it in a field rather than
+    /// constructing it inline in markup.
+    /// </summary>
     private DiffViewOptions CurrentView() => new()
     {
         SideBySide = SideBySide,
         IgnoreTrimWhitespace = IgnoreTrimWhitespace,
+        OverviewRuler = OverviewRuler,
         ReadOnly = ReadOnly,
         OriginalEditable = OriginalEditable,
+        Minimap = Minimap,
+        TabSize = TabSize,
+        FontSize = FontSize,
+        RawOptions = EditorOptions,
     };
 
     /// <summary>

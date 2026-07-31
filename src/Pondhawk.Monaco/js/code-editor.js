@@ -141,12 +141,17 @@ export function configureSchema(schemaJson, fileMatch) {
  */
 function ensureStyles(baseUrl) {
   const href = `${baseUrl.replace(/\/$/, '')}/code-editor.css`;
-  if (document.querySelector(`link[data-pondhawk-editor]`)) return;
+
+  // A DIFFERENT attribute from the data-pondhawk-editor stamp on the host element. They used to share
+  // one name, and since this link lives in <head> it sorted first — so querySelector('[data-pondhawk-
+  // editor]') from the devtools console returned the stylesheet with an empty value, defeating the one
+  // thing that stamp exists for.
+  if (document.querySelector('link[data-pondhawk-monaco-styles]')) return;
 
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = href;
-  link.setAttribute('data-pondhawk-editor', '');
+  link.setAttribute('data-pondhawk-monaco-styles', '');
   document.head.appendChild(link);
 }
 
@@ -158,6 +163,10 @@ export function create(id, host, options) {
   checkLanguage(options.language);
   const model = monaco.editor.createModel(options.value ?? '', options.language ?? 'plaintext');
 
+  // tabSize is a MODEL option, not an editor option. Passing it to create() sets it on the model Monaco
+  // would have created for itself — and we supply our own, so it is dropped silently.
+  model.updateOptions({ tabSize: options.tabSize ?? 2 });
+
   const editor = monaco.editor.create(host, {
     // Defaults chosen to be sensible for source editing generally, then overridden by whatever the
     // caller passes. `editorOptions` is a raw Monaco IStandaloneEditorConstructionOptions bag so this
@@ -165,6 +174,12 @@ export function create(id, host, options) {
     minimap: { enabled: options.minimap ?? false },
     scrollBeyondLastLine: false,
     tabSize: options.tabSize ?? 2,
+
+    // Off, or TabSize is advisory at best. Monaco guesses indentation from the document on attach and
+    // overwrites the model's tabSize with what it found — so an explicit TabSize=8 silently became 2 on
+    // any 2-space-indented file. A component that exposes the setting has to mean it.
+    detectIndentation: false,
+
     renderWhitespace: 'selection',
     fontSize: options.fontSize ?? 12.5,
     fixedOverflowWidgets: true,
@@ -228,6 +243,98 @@ export function setLanguage(id, language) {
   checkLanguage(language);
   const entry = editors.get(id);
   if (entry) monaco.editor.setModelLanguage(entry.model, language);
+}
+
+/**
+ * Apply option changes to a live editor. Every option this component exposes goes through here after
+ * construction, so a parameter that changes at runtime actually takes effect — previously they were
+ * passed to create() and never revisited, which made ReadOnly and friends look live when they were not.
+ *
+ * updateOptions is Monaco's supported path for this: it diffs internally and preserves the model, the
+ * scroll position and the undo stack, where recreating the editor would lose all three.
+ */
+export function updateOptions(id, options) {
+  const entry = editors.get(id);
+  if (!entry) return;
+
+  entry.editor.updateOptions({
+    minimap: { enabled: options.minimap ?? false },
+    fontSize: options.fontSize ?? 12.5,
+    readOnly: options.readOnly ?? false,
+    detectIndentation: false,   // see create(): detection would overwrite tabSize below
+    ...(options.editorOptions ?? {}),
+  });
+
+  // Model option, not an editor one — see create().
+  entry.model.updateOptions({ tabSize: options.tabSize ?? 2 });
+}
+
+// --- Cursor, selection and focus ---------------------------------------------------------------------
+//
+// Read/write only. There is deliberately no cursor-moved EVENT: it fires on every arrow key, and under
+// Blazor Server that is a network hop per keystroke — the same reasoning that put a debounce on content
+// changes. A host that needs live cursor tracking should ask for it, so it can be debounced on purpose.
+
+/** 1-based, matching Monaco and EditorMarker. Null when the editor has no cursor yet. */
+export function getPosition(id) {
+  const p = editors.get(id)?.editor.getPosition();
+  return p ? { line: p.lineNumber, column: p.column } : null;
+}
+
+export function setPosition(id, line, column) {
+  const entry = editors.get(id);
+  if (!entry) return;
+
+  entry.editor.setPosition({ lineNumber: line, column: column ?? 1 });
+}
+
+export function getSelection(id) {
+  const s = editors.get(id)?.editor.getSelection();
+  return s ? {
+    startLine: s.startLineNumber, startColumn: s.startColumn,
+    endLine: s.endLineNumber, endColumn: s.endColumn,
+  } : null;
+}
+
+export function setSelection(id, selection) {
+  const entry = editors.get(id);
+  if (!entry) return;
+
+  entry.editor.setSelection({
+    startLineNumber: selection.startLine, startColumn: selection.startColumn,
+    endLineNumber: selection.endLine, endColumn: selection.endColumn,
+  });
+}
+
+export function focus(id) {
+  editors.get(id)?.editor.focus();
+}
+
+export function hasTextFocus(id) {
+  return editors.get(id)?.editor.hasTextFocus() ?? false;
+}
+
+/**
+ * Run a built-in Monaco action by id — 'editor.action.formatDocument', 'actions.find',
+ * 'editor.action.commentLine' — which is the whole of Monaco's command surface for one method.
+ *
+ * Returns whether the id named a REGISTERED action. Some built-ins (undo, redo) are commands rather than
+ * actions and are only reachable through trigger(), which reports nothing back; those fall through and
+ * return false. The return value therefore means "Monaco knew this as an action", which is what makes a
+ * mistyped id visible instead of a silent no-op.
+ */
+export async function runAction(id, actionId) {
+  const entry = editors.get(id);
+  if (!entry) return false;
+
+  const action = entry.editor.getAction(actionId);
+  if (action) {
+    await action.run();
+    return true;
+  }
+
+  entry.editor.trigger('pondhawk', actionId, null);
+  return false;
 }
 
 /**
@@ -302,6 +409,7 @@ export function createDiff(id, host, options) {
     fontSize: options.fontSize ?? 12.5,
     fixedOverflowWidgets: true,
     theme: options.theme ?? 'vs',
+    detectIndentation: false,   // see create(): detection would overwrite tabSize
 
     // Diff-specific. `readOnly` governs the MODIFIED side; the original is separately locked, because
     // the common case — reviewing what changed — wants the left side immutable even when the right is
@@ -318,6 +426,10 @@ export function createDiff(id, host, options) {
 
   editor.setModel({ original, modified });
   host.dataset.pondhawkEditor = id;   // see create()
+
+  // Model option on BOTH sides — see create() for why passing it to the constructor is not enough.
+  original.updateOptions({ tabSize: options.tabSize ?? 2 });
+  modified.updateOptions({ tabSize: options.tabSize ?? 2 });
 
   const entry = { editor, original, modified, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };
   diffs.set(id, entry);
@@ -375,7 +487,10 @@ export function setDiffLanguage(id, language) {
   monaco.editor.setModelLanguage(entry.modified, language);
 }
 
-/** Change view options — side-by-side vs inline, whitespace handling — without rebuilding the editor. */
+/**
+ * Change options on a live diff — side-by-side vs inline, whitespace handling, appearance — without
+ * rebuilding the editor, which would lose both models, the scroll position and the undo stack.
+ */
 export function setDiffOptions(id, options) {
   const entry = diffs.get(id);
   if (!entry) return;
@@ -383,9 +498,16 @@ export function setDiffOptions(id, options) {
   entry.editor.updateOptions({
     renderSideBySide: options.sideBySide,
     ignoreTrimWhitespace: options.ignoreTrimWhitespace,
+    renderOverviewRuler: options.overviewRuler,
     readOnly: options.readOnly,
     originalEditable: options.originalEditable,
+    minimap: { enabled: options.minimap ?? false },
+    fontSize: options.fontSize ?? 12.5,
+    ...(options.editorOptions ?? {}),
   });
+
+  entry.original.updateOptions({ tabSize: options.tabSize ?? 2 });
+  entry.modified.updateOptions({ tabSize: options.tabSize ?? 2 });
 }
 
 /** Jump to the next or previous change. `target` is 'next' or 'previous'. */

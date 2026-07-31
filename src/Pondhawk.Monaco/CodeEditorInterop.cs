@@ -34,8 +34,32 @@ internal sealed class CodeEditorInterop(IJSRuntime js, string baseUrl) : IAsyncD
     public async Task SetLanguageAsync(string id, string language) =>
         await (await Module).InvokeVoidAsync("setLanguage", id, language);
 
+    public async Task UpdateOptionsAsync(string id, LiveEditorOptions options) =>
+        await (await Module).InvokeVoidAsync("updateOptions", id, options);
+
     public async Task SetMarkersAsync(string id, IReadOnlyList<EditorMarker> markers) =>
         await (await Module).InvokeVoidAsync("setMarkers", id, markers);
+
+    public async Task<EditorPosition?> GetPositionAsync(string id) =>
+        await (await Module).InvokeAsync<EditorPosition?>("getPosition", id);
+
+    public async Task SetPositionAsync(string id, int line, int column) =>
+        await (await Module).InvokeVoidAsync("setPosition", id, line, column);
+
+    public async Task<EditorSelection?> GetSelectionAsync(string id) =>
+        await (await Module).InvokeAsync<EditorSelection?>("getSelection", id);
+
+    public async Task SetSelectionAsync(string id, EditorSelection selection) =>
+        await (await Module).InvokeVoidAsync("setSelection", id, selection);
+
+    public async Task FocusAsync(string id) =>
+        await (await Module).InvokeVoidAsync("focus", id);
+
+    public async Task<bool> HasFocusAsync(string id) =>
+        await (await Module).InvokeAsync<bool>("hasTextFocus", id);
+
+    public async Task<bool> RunActionAsync(string id, string actionId) =>
+        await (await Module).InvokeAsync<bool>("runAction", id, actionId);
 
     public async Task ConfigureSchemaAsync(string schemaJson, IReadOnlyList<string>? fileMatch) =>
         await (await Module).InvokeVoidAsync("configureSchema", schemaJson, fileMatch);
@@ -157,11 +181,37 @@ internal sealed record DiffOptions
     public IReadOnlyDictionary<string, object>? RawOptions { get; init; }
 }
 
+/// <summary>
+/// The options that can be changed on a live editor, sent whenever one of them differs from what was
+/// last applied.
+///
+/// <para><see cref="RawOptions"/> is compared by REFERENCE, as records do for dictionaries. A caller that
+/// rebuilds the dictionary on every render therefore pushes an update on every render — hold it in a
+/// field rather than constructing it inline in markup.</para>
+/// </summary>
+internal sealed record LiveEditorOptions
+{
+    public required bool ReadOnly { get; init; }
+    public required bool Minimap { get; init; }
+    public required int TabSize { get; init; }
+    public required double FontSize { get; init; }
+
+    [JsonPropertyName("editorOptions")]
+    public IReadOnlyDictionary<string, object>? RawOptions { get; init; }
+}
+
 /// <summary>The subset of diff options that can be changed without rebuilding the editor.</summary>
 internal sealed record DiffViewOptions
 {
     public required bool SideBySide { get; init; }
     public required bool IgnoreTrimWhitespace { get; init; }
+    public required bool OverviewRuler { get; init; }
     public required bool ReadOnly { get; init; }
     public required bool OriginalEditable { get; init; }
+    public required bool Minimap { get; init; }
+    public required int TabSize { get; init; }
+    public required double FontSize { get; init; }
+
+    [JsonPropertyName("editorOptions")]
+    public IReadOnlyDictionary<string, object>? RawOptions { get; init; }
 }

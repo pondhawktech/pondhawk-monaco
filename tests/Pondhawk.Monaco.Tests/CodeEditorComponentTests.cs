@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Bunit;
 using BunitContext = Bunit.TestContext;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,9 @@ public class CodeEditorComponentTests
     // point: a relative path would resolve against the document URL and break under a non-root base href.
     private const string ModulePath =
         "http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js";
+
+    // Matches Blazor's JS interop serializer configuration.
+    private static readonly JsonSerializerOptions InteropJson = new(JsonSerializerDefaults.Web);
 
     private static (BunitContext Ctx, BunitJSModuleInterop Module) Arrange()
     {
@@ -151,6 +155,82 @@ public class CodeEditorComponentTests
         // configureSchema tears down and rebuilds the YAML language service; doing it per render would
         // make completion flicker and drop in-flight requests.
         module.Invocations["configureSchema"].Count.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// These options were once passed to create() and never revisited, so a parameter that changed after
+    /// the first render silently did nothing while looking perfectly live. The push must happen — and
+    /// must NOT happen when nothing moved, since updateOptions on every parent render is interop churn.
+    /// </summary>
+    [Test]
+    public void Applies_option_changes_to_the_live_editor()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>(p => p.Add(c => c.ReadOnly, false));
+
+        cut.Render(p => p.Add(c => c.ReadOnly, false));
+        module.Invocations.Identifiers.ShouldNotContain("updateOptions",
+            "nothing changed, so re-applying would be pure interop churn");
+
+        cut.Render(p => p.Add(c => c.ReadOnly, true));
+        module.VerifyInvoke("updateOptions");
+    }
+
+    [TestCase("readOnly")]
+    [TestCase("minimap")]
+    [TestCase("tabSize")]
+    [TestCase("fontSize")]
+    [TestCase("editorOptions")]
+    public void Emits_the_live_option_names_the_js_module_reads(string property)
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>(p => p.Add(c => c.FontSize, 12.5));
+        cut.Render(p => p.Add(c => c.FontSize, 18.0));
+
+        var options = module.Invocations["updateOptions"].Single().Arguments[1]!;
+        var json = JsonSerializer.SerializeToElement(options, InteropJson);
+
+        json.TryGetProperty(property, out _).ShouldBeTrue();
+    }
+
+    [Test]
+    public async Task Forwards_cursor_selection_and_focus_to_the_editor()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>();
+
+        await cut.Instance.SetPositionAsync(3, 5);
+        await cut.Instance.SetSelectionAsync(new EditorSelection
+        {
+            StartLine = 1, StartColumn = 1, EndLine = 2, EndColumn = 4,
+        });
+        await cut.Instance.FocusAsync();
+
+        module.VerifyInvoke("setPosition");
+        module.VerifyInvoke("setSelection");
+        module.VerifyInvoke("focus");
+    }
+
+    [Test]
+    public async Task Runs_a_named_monaco_action()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>();
+
+        await cut.Instance.RunActionAsync("editor.action.formatDocument");
+
+        // The action id is the whole payload — a typo is only visible because the JS side reports
+        // whether Monaco recognised it, so the id must arrive intact.
+        var invocation = module.Invocations["runAction"].Single();
+        invocation.Arguments[1].ShouldBe("editor.action.formatDocument");
     }
 
     [Test]

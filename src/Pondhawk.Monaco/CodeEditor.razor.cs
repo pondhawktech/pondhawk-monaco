@@ -31,6 +31,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     private string? _appliedLanguage;
     private string? _appliedSchema;
     private string? _appliedTheme;
+    private LiveEditorOptions? _appliedOptions;
 
     /// <summary>The document text. Supports <c>@bind-Value</c>.</summary>
     [Parameter] public string Value { get; set; } = string.Empty;
@@ -94,6 +95,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
             _lastValueFromEditor = Value;
             _appliedLanguage = Language;
             _appliedTheme = Theme;
+            _appliedOptions = CurrentOptions();
 
             await _interop.CreateAsync(_id, _host, new EditorOptions
             {
@@ -140,9 +142,27 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
             await _interop.SetThemeAsync(Theme);
         }
 
+        // Appearance and behaviour options. These used to be construction-only, which made ReadOnly,
+        // Minimap, TabSize and FontSize look like live parameters while doing nothing after first render.
+        var options = CurrentOptions();
+        if (options != _appliedOptions)
+        {
+            _appliedOptions = options;
+            await _interop.UpdateOptionsAsync(_id, options);
+        }
+
         await ApplySchemaAsync();
         await ApplyMarkersAsync();
     }
+
+    private LiveEditorOptions CurrentOptions() => new()
+    {
+        ReadOnly = ReadOnly,
+        Minimap = Minimap,
+        TabSize = TabSize,
+        FontSize = FontSize,
+        RawOptions = EditorOptions,
+    };
 
     private async Task ApplySchemaAsync()
     {
@@ -196,6 +216,56 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     /// <summary>Read the editor's current text directly, bypassing the debounce.</summary>
     public async Task<string> GetValueAsync() =>
         _created && _interop is not null ? await _interop.GetValueAsync(_id) : Value;
+
+    /// <summary>Where the caret is. Null before the editor exists, or when it has never held a cursor.</summary>
+    public async Task<EditorPosition?> GetPositionAsync() =>
+        _created && _interop is not null ? await _interop.GetPositionAsync(_id) : null;
+
+    /// <summary>Move the caret. Does not scroll — use <see cref="RevealLineAsync"/> for that.</summary>
+    public async Task SetPositionAsync(int line, int column = 1)
+    {
+        if (_created && _interop is not null)
+            await _interop.SetPositionAsync(_id, line, column);
+    }
+
+    /// <summary>The selected range, or an empty range when nothing is selected. Null before creation.</summary>
+    public async Task<EditorSelection?> GetSelectionAsync() =>
+        _created && _interop is not null ? await _interop.GetSelectionAsync(_id) : null;
+
+    /// <summary>Select a range. Positions are 1-based and the end is exclusive.</summary>
+    public async Task SetSelectionAsync(EditorSelection selection)
+    {
+        if (_created && _interop is not null)
+            await _interop.SetSelectionAsync(_id, selection);
+    }
+
+    /// <summary>Put keyboard focus in the editor — after opening a panel, or restoring a tab.</summary>
+    public async Task FocusAsync()
+    {
+        if (_created && _interop is not null)
+            await _interop.FocusAsync(_id);
+    }
+
+    /// <summary>Whether the editor currently holds keyboard focus.</summary>
+    public async Task<bool> HasFocusAsync() =>
+        _created && _interop is not null && await _interop.HasFocusAsync(_id);
+
+    /// <summary>
+    /// Run a built-in Monaco action by id — the whole of Monaco's command surface through one method.
+    ///
+    /// <code>
+    /// await editor.RunActionAsync("editor.action.formatDocument");
+    /// await editor.RunActionAsync("actions.find");
+    /// await editor.RunActionAsync("editor.action.commentLine");
+    /// </code>
+    ///
+    /// <para>Returns whether Monaco knew the id as a registered action. A few built-ins (<c>undo</c>,
+    /// <c>redo</c>) are commands rather than actions and are dispatched anyway but report <c>false</c> —
+    /// so a <c>false</c> means "not a known action", which is what makes a mistyped id visible instead of
+    /// a silent no-op.</para>
+    /// </summary>
+    public async Task<bool> RunActionAsync(string actionId) =>
+        _created && _interop is not null && await _interop.RunActionAsync(_id, actionId);
 
     /// <summary>Disposes the Monaco editor, the JS module reference and the .NET callback handle.</summary>
     public async ValueTask DisposeAsync()

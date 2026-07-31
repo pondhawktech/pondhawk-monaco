@@ -146,9 +146,38 @@ column 5, use `StartColumn = 5, EndColumn = 6`.
 | `EditorOptions` | `IReadOnlyDictionary<string, object>?` | `null` | Raw Monaco options, merged over the above |
 | `Class` / `Style` | `string?` | `null` | On the host element |
 
-Methods: `GetValueAsync()` reads the text immediately, bypassing the debounce.
-`RevealLineAsync(line, column)` scrolls a line into view and puts the caret on it — for "jump to this
-diagnostic". `LayoutAsync()` re-measures after the container resizes.
+Every parameter is live: changing `ReadOnly`, `TabSize`, `FontSize`, `Minimap` or `EditorOptions` after
+first render applies to the running editor without losing the document, scroll position or undo history.
+
+> `EditorOptions` is compared by **reference**. Hold the dictionary in a field — building it inline in
+> markup creates a new one each render, which pushes an update every render.
+
+## Methods
+
+| | |
+|---|---|
+| `GetValueAsync()` | The text right now, bypassing the debounce |
+| `GetPositionAsync()` / `SetPositionAsync(line, column)` | The caret, 1-based |
+| `GetSelectionAsync()` / `SetSelectionAsync(selection)` | The selected range, 1-based and end-exclusive |
+| `FocusAsync()` / `HasFocusAsync()` | Keyboard focus |
+| `RevealLineAsync(line, column)` | Scroll a line into view and put the caret on it |
+| `LayoutAsync()` | Re-measure after the container resizes |
+| `RunActionAsync(actionId)` | Run any built-in Monaco action — see below |
+
+### `RunActionAsync` is the whole command surface
+
+Monaco's built-in actions are addressable by id, so one method covers formatting, find, comment toggling
+and the rest without a wrapper per feature:
+
+```csharp
+await editor.RunActionAsync("editor.action.formatDocument");
+await editor.RunActionAsync("actions.find");
+await editor.RunActionAsync("editor.action.commentLine");
+```
+
+It returns whether Monaco recognised the id as a registered action, so a typo is visible rather than a
+silent no-op. A few built-ins (`undo`, `redo`) are commands rather than actions: they still run, but
+report `false`.
 
 ### Keep `DebounceMs` non-zero
 
