@@ -157,10 +157,32 @@ public sealed class BuildTask : FrostingTask<BuildContext>
         });
 }
 
+/// <summary>
+/// Exercises code-editor.js against a stubbed Monaco, under Node's own test runner.
+///
+/// <para>The bUnit suite covers one half of the interop boundary — what .NET SENDS. This covers the
+/// other: what the module DOES with it. The payload tests say outright that they cannot check the
+/// consuming side, and nearly every defect found in this component has been on the JavaScript side of
+/// that line.</para>
+/// </summary>
+[TaskName("TestJs")]
+public sealed class TestJsTask : FrostingTask<BuildContext>
+{
+    public override void Run(BuildContext c)
+    {
+        if (!c.DirectoryExists($"{c.JsDir}/node_modules") && c.Npm("ci --no-audit --no-fund") != 0)
+            throw new CakeException("npm ci failed.");
+
+        if (c.Npm("test") != 0) throw new CakeException("JavaScript tests failed.");
+    }
+}
+
 /// <summary>Runs every test project in the solution — so a second one added later is run without this
-/// task being told about it.</summary>
+/// task being told about it — and the JavaScript tests alongside them. Pack depends on this, so neither
+/// half of the boundary can regress into a published package.</summary>
 [TaskName("Test")]
 [IsDependentOn(typeof(BuildTask))]
+[IsDependentOn(typeof(TestJsTask))]
 public sealed class TestTask : FrostingTask<BuildContext>
 {
     public override void Run(BuildContext c)

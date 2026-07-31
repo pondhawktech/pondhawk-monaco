@@ -116,8 +116,9 @@ Directory.Build.props             the released version — single source of trut
 src/Pondhawk.Monaco/              RCL, NuGet-packable
   README.md                       the package readme — usage only, shipped to nuget.org
   js/                             esbuild sources (Monaco + monaco-yaml + workers)
+  js/test/                        Node tests — code-editor.js against a stubbed Monaco
   wwwroot/dist/                   bundled output — build artifact, gitignored
-tests/Pondhawk.Monaco.Tests/      bUnit tests over the interop boundary
+tests/Pondhawk.Monaco.Tests/      bUnit tests — the component against a stubbed code-editor.js
 demo/Pondhawk.Monaco.Demo/        Blazor WASM harness
 build/                            Cake Frosting build
 docs/                             design notes
@@ -184,6 +185,21 @@ Four things this component must get right, or it becomes something to fight rath
 
 `Pack` depends on `Test`, not merely `Build`: the package embeds the bundled JavaScript, so shipping one
 that failed its tests would put a broken editor into every consuming app with no local signal.
+
+### Both halves of the interop boundary are tested
+
+The boundary is untyped in both directions, so each side is tested against a stub of the other:
+
+| | Real | Mocked | Pins |
+|---|---|---|---|
+| `tests/Pondhawk.Monaco.Tests` (bUnit) | the component | `code-editor.js` | what .NET **sends**, and what it does *not* re-send |
+| `js/test` (`node --test`) | `code-editor.js` | Monaco | what the module **does** with what arrives |
+
+The .NET payload tests say outright that they can only assert what C# emits. The JS tests close that:
+marker severities, decoration field names, worker routing, theme colour normalisation. Nearly every
+defect found in this component has been on the JavaScript side of that line.
+
+`./build.sh --target TestJs` runs the JavaScript tests alone; `Test` runs both, so `Pack` gates on both.
 
 Node and npm are needed **only in this repo**, and only to produce `wwwroot/dist`.
 

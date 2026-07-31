@@ -18,3 +18,6 @@ src/Pondhawk.Monaco/wwwroot/dist/
 *.swp
 .DS_Store
 artifacts/
+
+# JS test scratch — the stubbed bundle the Node tests build and run against
+src/Pondhawk.Monaco/js/test/.tmp/
