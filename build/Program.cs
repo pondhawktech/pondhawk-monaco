@@ -75,6 +75,12 @@ public sealed class BuildContext : FrostingContext
 
     public string ArtifactsDir => "artifacts";
 
+    /// <summary>The published package id. Named once, so the file-name convention lives in one place.</summary>
+    public string PackageId => "Pondhawk.Monaco";
+
+    /// <summary>Where Pack writes the package for a given version.</summary>
+    public string PackagePath(string version) => $"{ArtifactsDir}/{PackageId}.{version}.nupkg";
+
     /// <summary>Where the demo serves. One constant, because the URL printed and the URL bound must agree —
     /// they did not before: the task advertised 5200 while the launch profile quietly bound 5292.</summary>
     public string DemoUrl => "http://localhost:5200";
@@ -394,7 +400,7 @@ public sealed class VerifyBundleTask : FrostingTask<BuildContext>
     public override void Run(BuildContext c)
     {
         var against = c.Argument<string>("against");
-        var mine = $"{c.ArtifactsDir}/Pondhawk.Monaco.{c.ReadVersion()}.nupkg";
+        var mine = c.PackagePath(c.ReadVersion());
 
         foreach (var package in new[] { against, mine })
             if (!c.FileExists(package)) throw new CakeException($"No such package: {package}");
@@ -450,21 +456,26 @@ public sealed class PublishTask : FrostingTask<BuildContext>
                 $"PUBLISH_API_KEY is not set, so nothing can be pushed to {source}. An empty key returns a " +
                 "403, which reads as a permissions problem rather than as a missing secret.");
 
-        var packages = c.GetFiles($"{c.ArtifactsDir}/*.nupkg").ToList();
-        if (packages.Count == 0) throw new CakeException($"No packages in {c.ArtifactsDir}/ to publish.");
+        // Exactly one package, named by version — NOT a glob over artifacts/. Pack does not clear that
+        // directory, so a glob would happily push a stale package left there by an earlier build, and a
+        // version pushed to nuget.org can never be withdrawn.
+        var version = string.IsNullOrWhiteSpace(c.PackageVersion) ? c.ReadVersion() : c.PackageVersion;
+        var package = c.PackagePath(version);
 
-        foreach (var package in packages)
+        if (!c.FileExists(package))
+            throw new CakeException(
+                $"No such package: {package}. artifacts/ holds: " +
+                string.Join(", ", c.GetFiles($"{c.ArtifactsDir}/*.nupkg").Select(f => f.GetFilename().ToString())));
+
+        c.Information($"Pushing {package} to {source}");
+        c.DotNetNuGetPush(package, new DotNetNuGetPushSettings
         {
-            c.Information($"Pushing {package.GetFilename()} to {source}");
-            c.DotNetNuGetPush(package.FullPath, new DotNetNuGetPushSettings
-            {
-                Source = source,
-                ApiKey = apiKey,
-                // Re-runs against a CI feed are routine; on a feed where versions are permanent a
-                // duplicate means something is wrong, so the caller decides.
-                SkipDuplicate = c.Argument("skipDuplicate", false),
-            });
-        }
+            Source = source,
+            ApiKey = apiKey,
+            // Re-runs against a CI feed are routine; on a feed where versions are permanent a
+            // duplicate means something is wrong, so the caller decides.
+            SkipDuplicate = c.Argument("skipDuplicate", false),
+        });
     }
 }
 

@@ -76,4 +76,5 @@ jobs:
         run: |
           ./build.sh --target Publish \
             --source=https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \
+            --packageVersion=${{ steps.version.outputs.version }} \
             --skipDuplicate=true

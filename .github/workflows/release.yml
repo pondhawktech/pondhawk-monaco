@@ -198,7 +198,10 @@ jobs:
         if: '!inputs.dry_run'
         env:
           PUBLISH_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
-        run: ./build.sh --target Publish --source=https://api.nuget.org/v3/index.json
+        run: |
+          ./build.sh --target Publish \
+            --source=https://api.nuget.org/v3/index.json \
+            --packageVersion=${{ steps.version.outputs.version }}
 
       # skipDuplicate here but not above: re-runs against the CI feed are routine, while on a feed where
       # versions are permanent a duplicate means something is wrong and should be loud.
@@ -209,6 +212,7 @@ jobs:
         run: |
           ./build.sh --target Publish \
             --source=https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \
+            --packageVersion=${{ steps.version.outputs.version }} \
             --skipDuplicate=true
 
       # Now that the package exists, record the version that produced it. [skip ci] because this commit

@@ -322,6 +322,30 @@ public class CodeEditorComponentTests
         invocation.Arguments[1].ShouldBe("editor.action.formatDocument");
     }
 
+    /// <summary>
+    /// Narrowing or widening which documents a schema covers is a change to the schema configuration.
+    /// Comparing only the schema TEXT meant SchemaFileMatch was read once at first render and ignored
+    /// thereafter — live-looking and inert, the same trap as the construction-only options.
+    /// </summary>
+    [Test]
+    public void Reapplies_the_schema_when_only_its_file_match_changes()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        const string schema = """{"type":"object"}""";
+        var cut = ctx.Render<CodeEditor>(p => p
+            .Add(c => c.Schema, schema)
+            .Add(c => c.SchemaFileMatch, ["*.yaml"]));
+
+        // A different list instance holding the same values is not a change.
+        cut.Render(p => p.Add(c => c.Schema, schema).Add(c => c.SchemaFileMatch, ["*.yaml"]));
+        module.Invocations["configureSchema"].Count.ShouldBe(1);
+
+        cut.Render(p => p.Add(c => c.Schema, schema).Add(c => c.SchemaFileMatch, ["*.yaml", "*.yml"]));
+        module.Invocations["configureSchema"].Count.ShouldBe(2, "the schema now covers different documents");
+    }
+
     [Test]
     public async Task Disposes_the_editor_before_releasing_the_dotnet_reference()
     {

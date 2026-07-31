@@ -27,6 +27,11 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
     private DotNetObjectReference<DiffEditor>? _self;
 
     private bool _created;
+
+    /// <summary>Set when creation is ISSUED rather than completed — see <see cref="CodeEditor"/>. A
+    /// component disposed between the create and attach calls would otherwise leak the diff editor and
+    /// both of its models.</summary>
+    private bool _createIssued;
     private string _lastModifiedFromEditor = string.Empty;
     private string? _appliedOriginal;
     private string? _appliedLanguage;
@@ -104,6 +109,7 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
             _appliedTheme = Theme;
             _appliedView = CurrentView();
 
+            _createIssued = true;
             await _interop.CreateDiffAsync(_id, _host, new DiffOptions
             {
                 BaseUrl = baseUrl,
@@ -242,7 +248,8 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
     {
         try
         {
-            if (_created && _interop is not null)
+            // _createIssued, not _created — disposeDiff no-ops on an unregistered id.
+            if (_createIssued && _interop is not null)
                 await _interop.DisposeDiffAsync(_id);
         }
         catch (JSDisconnectedException)
