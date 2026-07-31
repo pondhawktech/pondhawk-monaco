@@ -113,6 +113,7 @@ Pondhawk.CodeEditor.slnx          all four projects
 .github/workflows/                CI and release
 .github/scripts/next-version.sh   the version bump, shared by both workflows
 src/Pondhawk.Blazor.CodeEditor/   RCL, NuGet-packable
+  README.md                       the package readme — usage only, shipped to nuget.org
   js/                             esbuild sources (Monaco + monaco-yaml + workers)
   wwwroot/dist/                   bundled output — build artifact, gitignored
 tests/…Tests/                     bUnit tests over the interop boundary

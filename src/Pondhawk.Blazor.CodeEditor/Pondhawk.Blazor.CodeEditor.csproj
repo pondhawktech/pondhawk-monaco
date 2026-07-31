@@ -31,7 +31,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <!--
+      This project's own README, not the one at the repo root. The root README is the design document —
+      build pipeline, release process, why-not-BlazorMonaco — and none of that is what someone landing on
+      the nuget.org listing needs. This one is usage only.
+    -->
+    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
   <ItemGroup>
