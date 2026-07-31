@@ -71,6 +71,10 @@ public sealed class BuildContext : FrostingContext
 
     public string ArtifactsDir => "artifacts";
 
+    /// <summary>Where the demo serves. One constant, because the URL printed and the URL bound must agree —
+    /// they did not before: the task advertised 5200 while the launch profile quietly bound 5292.</summary>
+    public string DemoUrl => "http://localhost:5200";
+
     public BuildContext(ICakeContext context) : base(context)
     {
         Configuration = context.Argument("configuration", "Release");
@@ -201,22 +205,35 @@ public sealed class DemoTask : FrostingTask<BuildContext>
 {
     public override void Run(BuildContext c)
     {
-        c.Information("Demo on http://localhost:5200 — Ctrl+C to stop.");
+        c.Information($"Demo on {c.DemoUrl} — Ctrl+C to stop.");
 
-        c.DotNetRun(c.Demo, new ProcessArgumentBuilder().Append("--no-launch-profile"),
-            new DotNetRunSettings
+        // Deliberately not DotNetRun. Cake appends its ProcessArgumentBuilder AFTER the `--` separator,
+        // which is where APP arguments go — but `--no-launch-profile` is an option to `dotnet run` itself.
+        // Passed on the wrong side it sailed through to blazor-devserver, which ignores unknown arguments,
+        // so the launch profile stayed in effect: its applicationUrl (5292) beat ASPNETCORE_URLS, and the
+        // task printed a URL nothing was listening on. Building the command line here keeps the option on
+        // the correct side of the separator.
+        c.StartProcess("dotnet", new ProcessSettings
+        {
+            Arguments = new ProcessArgumentBuilder()
+                .Append("run")
+                .Append("--project").AppendQuoted(c.Demo)
+                .Append("--configuration").Append(c.Configuration)
+                .Append("--no-build")
+                .Append("--no-launch-profile"),
+            // Assigned rather than collection-initialized: ProcessSettings leaves this null, unlike
+            // DotNetRunSettings, and `EnvironmentVariables = { ... }` on a null property is an NRE.
+            EnvironmentVariables = new Dictionary<string, string>
             {
-                Configuration = c.Configuration,
-                NoBuild = true,
-                EnvironmentVariables =
-                {
-                    // Development is REQUIRED, not a convenience: Blazor only composes static web assets
-                    // from referenced packages (the _content/** paths this component ships under) when
-                    // running as Development. Without it the editor loads with no Monaco and no styles.
-                    ["ASPNETCORE_URLS"] = "http://localhost:5200",
-                    ["ASPNETCORE_ENVIRONMENT"] = "Development",
-                },
-            });
+                // Development is REQUIRED, not a convenience: Blazor only composes static web assets
+                // from referenced packages (the _content/** paths this component ships under) when
+                // running as Development. Without it the editor loads with no Monaco and no styles.
+                ["ASPNETCORE_URLS"] = c.DemoUrl,
+                ["ASPNETCORE_ENVIRONMENT"] = "Development",
+            },
+        });
+
+        // No exit-code check: Ctrl+C is the normal way this ends, and it is not a build failure.
     }
 }
 
