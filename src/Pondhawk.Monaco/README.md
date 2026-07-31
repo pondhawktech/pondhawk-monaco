@@ -36,20 +36,32 @@ the component failed to load:
 
 ## Languages
 
-Every language Monaco ships is available for syntax highlighting — around 80 of them, including `csharp`,
-`sql`, `python`, `markdown`, `xml` and `dockerfile`.
+Eight languages are bundled. Four carry a full language service — completion, diagnostics and hover —
+and four are syntax highlighting, which is all Monaco offers for them in any case:
 
-Six have a full language service, with completion, diagnostics and hover:
-
-| | |
-|---|---|
-| `typescript`, `javascript` | |
-| `json` | schema-aware — see below |
-| `yaml` | schema-aware — see below |
-| `css`, `scss`, `less` | |
-| `html` | |
+| `Language` | | |
+|---|---|---|
+| `yaml` | service | **schema-aware** — see below |
+| `json` | service | **schema-aware** — see below |
+| `html` | service | tag and attribute completion |
+| `css` | service | property completion, colour decorators |
+| `xml` | highlighting | |
+| `markdown` | highlighting | |
+| `sql` | highlighting | |
+| `csharp` | highlighting | |
 
 Pass the Monaco language id to `Language`. It can change at runtime; the document survives the switch.
+
+The set is deliberately narrow. Monaco ships ~80 highlighting grammars and a TypeScript service whose
+worker alone is 5.7 MB, and carrying all of it made the package 3.3 MB for capability most applications
+never touch. Trimming to these eight took it to 1.9 MB.
+
+**An unbundled language falls back to plain text** and logs a console warning naming what *is* bundled —
+Monaco's own behaviour is to fall back in silence, which reads as a broken editor rather than an absent
+language. If you need one that is not here, open an issue; adding a highlighting grammar costs ~10 KB.
+
+Note that `scss`, `less`, `handlebars` and `razor` are **not** included, even though their services would
+otherwise ride along with `css` and `html` — the grammars that register those ids are not bundled.
 
 ## Schema-driven editing
 
@@ -202,14 +214,15 @@ and undo history survive the change.
 
 ## Load size
 
-Monaco is a large editor, and this package carries its full language set — it cannot know which languages
-you need. Most of that is not a first-load cost:
+Monaco is a large editor. Most of what ships here is not a first-load cost:
 
 - **Language workers load lazily.** Monaco fetches a language's worker only when a document of that
-  language is first opened. An app that only edits YAML never downloads the TypeScript, CSS or HTML
-  workers. (`ts.worker.js` is the big one at 5.7 MB — it contains the TypeScript compiler.)
-- **The main module loads on first render**, not at startup — `code-editor.js` at 3.7 MB plus its CSS.
+  language is first opened. An app that only edits YAML never downloads the JSON, CSS or HTML workers.
+- **The main module loads on first render**, not at startup — `code-editor.js` at 3.3 MB plus its CSS.
   Put the editor behind a lazily-loaded page and it costs nothing until someone opens it.
+
+Roughly 95% of that main module is Monaco's editor core — rendering, find, folding, the suggest widget.
+The eight bundled languages account for about 190 KB of it between them.
 
 ## Hosting models
 

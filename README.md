@@ -7,9 +7,9 @@ consuming apps need **no JavaScript toolchain at all**.
 <CodeEditor @bind-Value="source" Language="csharp" />
 ```
 
-Every language Monaco ships is available, with full language-service support (completion, diagnostics,
-hover) for the six that have one: **TypeScript/JavaScript, JSON, CSS/SCSS/LESS, HTML, and YAML**.
-Syntax highlighting covers the rest of Monaco's ~80 languages.
+Eight languages are bundled. **YAML, JSON, HTML and CSS** carry a full language service — completion,
+diagnostics, hover — and **XML, Markdown, SQL and C#** carry syntax highlighting, which is all Monaco
+offers for those in any case. Anything else falls back to plain text with a console warning.
 
 **Optional JSON-Schema intelligence** for YAML and JSON, when a schema is supplied:
 
@@ -127,16 +127,36 @@ assets under `_content/Pondhawk.Monaco/`.
 
 ## On size
 
-The full bundle is large — Monaco is a large editor, and `ts.worker.js` alone is 5.7 MB because it
-contains the TypeScript compiler. This is mostly not a first-load cost:
+Monaco is a large editor. The package is 1.9 MB, and most of what it contains is not a first-load cost:
 
 **Language workers load lazily.** Monaco fetches a language's worker only when a document of that
-language is first opened. An app that only edits YAML never downloads the TypeScript, CSS or HTML
-workers. What always loads is `code-editor.js` (3.7 MB) plus its CSS, and only when the component is
-first rendered — so put it behind a lazily-loaded page and it costs nothing until used.
+language is first opened. An app that only edits YAML never downloads the JSON, CSS or HTML workers.
+What always loads is `code-editor.js` (3.3 MB) plus its CSS, and only when the component is first
+rendered — so put it behind a lazily-loaded page and it costs nothing until used.
 
-The main module carries Monaco's full language set deliberately, because this component serves many
-applications and cannot know which languages a consumer needs.
+### Why the language set is curated
+
+`code-editor.js` imports Monaco one contribution at a time rather than through the `monaco-editor`
+barrel, which would pull in ~80 highlighting grammars and every language service. Measured:
+
+| | nupkg |
+|---|---:|
+| Full Monaco language set | 3,436,349 B |
+| The eight bundled languages | **1,957,925 B** |
+
+Almost all of that is `ts.worker.js`, 5.7 MB uncompressed because it contains the TypeScript compiler,
+for a service most consumers of a config editor never open. The main module barely moves — 95% of it is
+the editor core, and all eight languages together are ~190 KB.
+
+**The contributions are not symmetric, and this is the trap when adding a language.** JSON's service
+contribution calls `languages.register()` itself and stands alone. CSS's and HTML's do not — they only
+attach via `languages.onLanguage(id, …)`, and the `register()` call for those ids lives in
+`basic-languages`. Import the service without the grammar and the id is never registered at all, so the
+hook never fires: the language does not lose completion, it ceases to exist, and documents render as
+unhighlighted plain text with no error. Both halves are imported for `css` and `html`.
+
+An unbundled language id is caught at runtime by `checkLanguage()`, which reads Monaco's own registry —
+so it cannot drift from the bundle — and warns once per unknown id.
 
 ## Design constraints
 

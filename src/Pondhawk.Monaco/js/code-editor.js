@@ -4,7 +4,42 @@
 // only when the change did not originate here. Round-tripping every keystroke across interop is the
 // mistake that makes embedded editors feel laggy — in Blazor Server it is a network hop per character.
 
-import * as monaco from 'monaco-editor';
+// Monaco is imported one contribution at a time rather than through the `monaco-editor` barrel. The
+// barrel is editor.main.js, which is nothing but five side-effect imports — every language service and
+// all 83 highlighting grammars — plus `export * from './edcore.main'`. Importing edcore.main directly
+// keeps the whole editor (find, folding, suggest, quick access) and drops only what is not listed below.
+//
+// The set is deliberate, not incidental. Carrying Monaco's full language set cost 3.3 MB packaged, of
+// which 5.7 MB uncompressed was the TypeScript compiler in ts.worker.js. Trimming to the languages this
+// component actually claims to support takes the package to 2.0 MB.
+//
+// ADDING A LANGUAGE means an import here, plus its worker in build.mjs if it has a language service.
+// Nothing else: checkLanguage() below reads Monaco's own registry, so it cannot fall out of step.
+import * as monaco from 'monaco-editor/esm/vs/editor/edcore.main';
+
+// Language SERVICES — completion, diagnostics, hover. Each runs in its own worker.
+import 'monaco-editor/esm/vs/language/json/monaco.contribution';
+import 'monaco-editor/esm/vs/language/css/monaco.contribution';
+import 'monaco-editor/esm/vs/language/html/monaco.contribution';
+
+// Highlighting, and — for css and html — the language REGISTRATION their services depend on.
+//
+// The three service contributions above are not symmetric, which is a trap worth spelling out. JSON's
+// calls languages.register() itself, so it stands alone. CSS's and HTML's do not: they only attach via
+// languages.onLanguage(id, …), and the register() call for those ids lives here in basic-languages. Import
+// the service without this and the id is never registered, so the hook never fires — the language does not
+// merely lose completion, it does not exist, and documents render as unhighlighted plain text.
+import 'monaco-editor/esm/vs/basic-languages/css/css.contribution';
+import 'monaco-editor/esm/vs/basic-languages/html/html.contribution';
+
+// Highlighting only. Monaco ships no language service for these, in the full bundle either — XML, SQL,
+// Markdown and C# were always colours and bracket matching, never completion.
+import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution';
+import 'monaco-editor/esm/vs/basic-languages/xml/xml.contribution';
+import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
+import 'monaco-editor/esm/vs/basic-languages/sql/sql.contribution';
+import 'monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution';
+
 import { configureMonacoYaml } from 'monaco-yaml';
 
 /** id -> { editor, model, dotNet, revision, changeTimer, subscriptions } */
@@ -28,12 +63,13 @@ function configureWorkers(baseUrl) {
 
   // Monaco dispatches by language LABEL, and several languages share one worker. A label routed to the
   // wrong worker does not throw — it silently produces no completions or diagnostics for that language,
-  // so the mapping has to be complete rather than covering today's languages.
+  // so the mapping has to cover every service actually bundled.
+  //
+  // No typescript/javascript entry: that service is not bundled, so Monaco never asks for its worker.
   const byLabel = {
     json: 'json',
     css: 'css', scss: 'css', less: 'css',
     html: 'html', handlebars: 'html', razor: 'html',
-    typescript: 'ts', javascript: 'ts',
     yaml: 'yaml',
   };
 
@@ -44,6 +80,32 @@ function configureWorkers(baseUrl) {
   };
 
   workersReady = true;
+}
+
+/**
+ * Warn when a document asks for a language this build does not carry.
+ *
+ * Monaco's own behaviour here is to fall back to plaintext in silence: no error, no diagnostic, just an
+ * unhighlighted document. Since this build ships a deliberately reduced language set, that silence would
+ * read as "the editor is broken" rather than "that language was not bundled". One console warning per
+ * unknown id turns it into something diagnosable — non-fatal, because a typo in a language id should not
+ * take out the page.
+ */
+const warnedLanguages = new Set();
+
+function checkLanguage(language) {
+  if (!language || warnedLanguages.has(language)) return;
+
+  // Monaco is the authority — it knows what the imports above actually registered, so this cannot drift
+  // from the bundle the way a hand-maintained list would.
+  if (monaco.languages.getLanguages().some(l => l.id === language)) return;
+
+  warnedLanguages.add(language);
+  // Deduplicated: an id can be registered twice — 'yaml' comes from both basic-languages and monaco-yaml.
+  const supported = [...new Set(monaco.languages.getLanguages().map(l => l.id))].sort().join(', ');
+  console.warn(
+    `[pondhawk-monaco] Language '${language}' is not bundled in this build; ` +
+    `the document will render as plain text. Bundled languages: ${supported}.`);
 }
 
 /**
@@ -93,6 +155,7 @@ export function create(id, host, options) {
   configureWorkers(options.baseUrl);
   dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
 
+  checkLanguage(options.language);
   const model = monaco.editor.createModel(options.value ?? '', options.language ?? 'plaintext');
 
   const editor = monaco.editor.create(host, {
@@ -162,6 +225,7 @@ export function setValue(id, value) {
 }
 
 export function setLanguage(id, language) {
+  checkLanguage(language);
   const entry = editors.get(id);
   if (entry) monaco.editor.setModelLanguage(entry.model, language);
 }
@@ -225,6 +289,7 @@ export function createDiff(id, host, options) {
   configureWorkers(options.baseUrl);
   disposeDiff(id); // defensive, matching create()
 
+  checkLanguage(options.language);
   const language = options.language ?? 'plaintext';
   const original = monaco.editor.createModel(options.original ?? '', language);
   const modified = monaco.editor.createModel(options.modified ?? '', language);
@@ -302,6 +367,7 @@ export function setDiffValue(id, side, value) {
 }
 
 export function setDiffLanguage(id, language) {
+  checkLanguage(language);
   const entry = diffs.get(id);
   if (!entry) return;
 

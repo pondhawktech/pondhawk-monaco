@@ -177,12 +177,17 @@
               </PropertyGroup>
             </Project>
             """),
-        new("typescript", "TypeScript (full service)", """
-            // TypeScript HAS a language service — hover a symbol, or type a dot.
-            interface Endpoint { name: string; port: number; protocol?: string; }
-
-            const url = (host: string, e: Endpoint): string =>
-                `${e.protocol ?? "http"}://${host}:${e.port}`;
+        new("html", "HTML (full service)", """
+            <!-- HTML has a language service — type '<' for tag completion, or hover an attribute. -->
+            <section class="endpoints">
+              <h2>Public endpoints</h2>
+              <ul><li><a href="https://example:8080">public</a></li></ul>
+            </section>
+            """),
+        new("css", "CSS (full service)", """
+            /* CSS has a language service too — type a property name, or hover a value. */
+            .endpoints { display: flex; flex-direction: column; gap: .5rem; }
+            .endpoints a { color: #0b6bcb; text-decoration: none; }
             """),
     ];
 }

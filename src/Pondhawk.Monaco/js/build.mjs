@@ -39,9 +39,14 @@ const main = {
 // Workers are bundled separately and loaded as CLASSIC workers (not type: "module").
 // Classic + IIFE is the widest-compatibility combination and avoids module-worker support questions
 // in older browsers; the trade-off is that each worker carries its own copy of shared Monaco code.
-// ALL of Monaco's language-service workers, not just the ones the first consumer happens to need.
-// Each language service runs in its own worker; routing a language to the wrong worker does not error,
-// it just silently yields no completions or diagnostics for that language.
+//
+// One worker per language service. This list and the contribution imports in code-editor.js must agree:
+// a service imported without its worker fails at the moment that language is first opened, and a worker
+// built for a service that was never imported is dead weight in the package.
+//
+// TypeScript is deliberately absent. ts.worker.js is 5.7 MB — it contains the TypeScript compiler — and
+// dropping it with the rest of the unused language set takes the package from 3.3 MB to 2.0 MB. TS and
+// JS are not in the supported set, so nothing routes to it.
 const workers = {
   ...shared,
   entryPoints: {
@@ -49,7 +54,6 @@ const workers = {
     'json.worker': 'node_modules/monaco-editor/esm/vs/language/json/json.worker.js',
     'css.worker': 'node_modules/monaco-editor/esm/vs/language/css/css.worker.js',
     'html.worker': 'node_modules/monaco-editor/esm/vs/language/html/html.worker.js',
-    'ts.worker': 'node_modules/monaco-editor/esm/vs/language/typescript/ts.worker.js',
     'yaml.worker': 'node_modules/monaco-yaml/yaml.worker.js',
   },
   format: 'iife',
