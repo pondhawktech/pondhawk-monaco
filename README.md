@@ -277,8 +277,31 @@ Run **Release to NuGet.org** from the Actions tab and choose `none`/`patch`/`min
 **The very first release is `none`** — the file already reads `1.0.0`, and bumping would skip past it.
 
 On a real run the order is: resolve the version → test → pack → verify the nupkg carries the expected
-version → push to nuget.org → mirror to GitHub Packages → commit the bumped file → tag and open a GitHub
-release.
+version → compare the bundle against CI's → push to nuget.org → mirror to GitHub Packages → commit the
+bumped file → tag and open a GitHub release.
+
+### Why the release rebuilds, and what checks that
+
+The release packs from source rather than promoting the package CI already published, because a NuGet
+version is baked into the `.nuspec` and the filename — there is no retag. `1.0.0-ci.3` cannot become
+`1.0.0` without repacking, which is rebuilding.
+
+That is the right trade for NuGet, but it means the bytes being published are not literally the bytes CI
+tested. `compare-bundles.sh` closes the gap: the release downloads CI's package for the same commit and
+compares `staticwebassets/` — the npm and esbuild output — file by file. Everything else in the package
+legitimately differs between two versions (the nuspec, the assembly, the relationship parts), and
+diffing those would be noise that trains you to ignore the check.
+
+It is **best effort**: no CI run for the commit, or an artifact past its 14-day retention, logs a notice
+and continues, because neither should block a legitimate release. A bundle that is present *and*
+different fails the release — same commit and the same locked toolchain should produce the same bundle,
+so a mismatch means the build has become non-deterministic.
+
+Run it by hand on any two packages:
+
+```bash
+.github/scripts/compare-bundles.sh a.nupkg b.nupkg
+```
 
 Releases must run from `main`, and the workflow refuses a version whose tag already exists — which is
 also what stops `none` from silently republishing.

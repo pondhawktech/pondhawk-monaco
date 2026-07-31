@@ -29,6 +29,7 @@ on:
 permissions:
   contents: write   # commit the version bump, create the tag and the GitHub release
   packages: write   # mirror the released version to GitHub Packages
+  actions: read     # find and download the CI build of this commit, to compare bundles against
 
 concurrency:
   group: release
@@ -107,6 +108,43 @@ jobs:
           expected="artifacts/Pondhawk.Monaco.${{ steps.version.outputs.version }}.nupkg"
           [ -f "$expected" ] || { echo "::error::Expected $expected; artifacts/ holds: $(ls artifacts/)"; exit 1; }
           echo "Packed $expected"
+
+      # The release rebuilds rather than promoting what CI already published, because a NuGet version is
+      # baked into the .nuspec and the filename — there is no retag. So the bytes about to be published
+      # are not literally the bytes CI tested. This checks the one part that could drift without any test
+      # noticing: wwwroot/dist, the output of npm and esbuild.
+      #
+      # Best effort by design. No CI run for this commit (pushed with [skip ci], or CI still running) and
+      # no artifact (they expire after 14 days) both mean "cannot verify", which must not block a
+      # legitimate release. A bundle that is present AND different is fatal.
+      - name: Verify the bundle matches the one CI built
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          run_id="$(gh run list --workflow=ci.yml --limit 20 \
+            --json headSha,databaseId,conclusion \
+            --jq '[.[] | select(.headSha == "'"$GITHUB_SHA"'" and .conclusion == "success")][0].databaseId // empty')"
+
+          if [ -z "$run_id" ]; then
+            echo "::notice::No successful CI run for ${GITHUB_SHA}; skipping the bundle comparison."
+            exit 0
+          fi
+
+          if ! gh run download "$run_id" --pattern 'nupkg-*' --dir ci-build 2>/dev/null; then
+            echo "::warning::CI run ${run_id} has no downloadable package (artifacts expire after 14 days); skipping the bundle comparison."
+            exit 0
+          fi
+
+          ci_pkg="$(find ci-build -name '*.nupkg' | head -n1)"
+          [ -n "$ci_pkg" ] || {
+            echo "::warning::Downloaded artifact contained no .nupkg; skipping the bundle comparison."
+            exit 0
+          }
+
+          echo "Comparing against CI run ${run_id}: $(basename "$ci_pkg")"
+          .github/scripts/compare-bundles.sh "$ci_pkg" "artifacts/Pondhawk.Monaco.${{ steps.version.outputs.version }}.nupkg"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
