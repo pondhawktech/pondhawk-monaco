@@ -30,8 +30,16 @@ The host element has **no intrinsic height**. Without one you get a zero-pixel e
 the component failed to load:
 
 ```razor
-<CodeEditor @bind-Value="source" Style="height:400px" />      @* or *@
-<CodeEditor @bind-Value="source" Class="editor" />            @* .editor { height: 100% } *@
+<CodeEditor @bind-Value="source" Style="height:400px" />
+```
+
+or give it a class and size that from your own CSS:
+
+```razor
+<CodeEditor @bind-Value="source" Class="editor" />
+```
+```css
+.editor { height: 100%; }
 ```
 
 ## Languages

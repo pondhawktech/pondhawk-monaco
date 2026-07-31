@@ -266,33 +266,40 @@ MSBuild imports that for every project automatically, so `./build.sh --target Pa
 produces the real version — what the file says is what packs, locally and in CI alike. Read the file and
 you know what the next release will be.
 
-**The file is the version to publish next**, not the last one published. So the release workflow packs
-exactly what it reads, and the bump is applied *before* publishing:
+**The file records what was last released.** The release workflow bumps it, publishes, then commits the
+new value back to `main` with `[skip ci]`:
 
 ```
-file 1.0.0  →  none 1.0.0   patch 1.0.1   minor 1.1.0   major 2.0.0
+file 1.0.0  →  patch 1.0.1   minor 1.1.0   major 2.0.0
 ```
 
-`none` publishes the file untouched — that is the first release, and the retry path if a publish fails
-part-way. Every other choice rewrites the file first. After a successful release the file therefore
-records what was last published, and the workflow commits it back to `main` with `[skip ci]`.
+`none` publishes the file untouched. That is the **first release only** — afterwards the tag guard
+refuses it, because the version it names has already shipped.
+
+CI builds prereleases from the **next patch**, not from the file's own value: with `1.0.0` released,
+`1.0.1-ci.87` sorts above it and below the eventual `1.0.1`. Suffixing the file directly would produce
+`1.0.0-ci.87`, which NuGet orders *below* the release it comes after.
 
 The commit happens **after** the package is pushed, never before: a committed bump and a tag for a
 release that never published would block retrying that version.
 
-CI suffixes the same file — `1.0.0-ci.87`. NuGet orders that below the eventual `1.0.0`, so a CI build
-can never occupy or shadow the release it precedes, and consumers only see one if they opt into
-prereleases.
+A consumer only sees a prerelease if they opt into prereleases, and it can never occupy or shadow a
+release version.
 
 Tags are still created (`v1.0.0`, plus a GitHub release with the nupkg attached) — as release markers,
 and as the check that stops a version being published twice.
 
 ### Releasing
 
-Run **Release to NuGet.org** from the Actions tab and choose `none`/`patch`/`minor`/`major`. Tick
-**dry run** to build and pack without publishing or committing anything.
+Run **Release to NuGet.org** from the Actions tab and choose `patch`/`minor`/`major`. Tick **dry run**
+to build and pack without publishing or committing anything.
 
-**The very first release is `none`** — the file already reads `1.0.0`, and bumping would skip past it.
+A real publish also requires typing the exact version into **confirm**. Environment approval rules are
+Enterprise-only for a private repository, so this stands in for a second pair of eyes: weaker, but it
+stops a mis-aimed dispatch, and a nuget.org push cannot be undone.
+
+`none` publishes the file as-is and was the path for the **first** release; the tag guard refuses it now
+that 1.0.0 has shipped.
 
 On a real run the order is: resolve the version → test → pack → verify the nupkg carries the expected
 version → compare the bundle against CI's → push to nuget.org → mirror to GitHub Packages → commit the

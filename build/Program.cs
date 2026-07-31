@@ -132,6 +132,19 @@ public sealed class BuildContext : FrostingContext
     }
 
     /// <summary>
+    /// The next patch after the last released version, WITHOUT rewriting the file.
+    ///
+    /// <para>What CI prereleases are built from. The file records what shipped, so <c>1.0.0-ci.7</c>
+    /// would sort below the 1.0.0 it comes after; <c>1.0.1-ci.7</c> sits above 1.0.0 and below the
+    /// eventual 1.0.1, which is what a prerelease is supposed to mean.</para>
+    /// </summary>
+    public string NextPatch()
+    {
+        var parts = ReadVersion().Split('.').Select(int.Parse).ToArray();
+        return $"{parts[0]}.{parts[1]}.{parts[2] + 1}";
+    }
+
+    /// <summary>
     /// Applies a semantic bump and rewrites <see cref="VersionFile"/> in place, returning the new value.
     ///
     /// <para>Rewritten by regex rather than by loading and saving the XML, which would reformat the file
@@ -325,9 +338,9 @@ public sealed class PackTask : FrostingTask<BuildContext>
 /// Resolves the version to release, optionally bumping the version file first.
 ///
 /// <code>
-/// ./build.sh --target Version                        # print what is there
-/// ./build.sh --target Version --bump=minor           # rewrite the file, print the new value
-/// ./build.sh --target Version --suffix=ci.42         # 1.0.0-ci.42, without touching the file
+/// ./build.sh --target Version                            # print the last released version
+/// ./build.sh --target Version --bump=minor               # rewrite the file, print the new value
+/// ./build.sh --target Version --next=true --suffix=ci.42 # 1.0.1-ci.42, file untouched
 /// </code>
 ///
 /// <para>Writes <c>version=X.Y.Z</c> to <c>$GITHUB_OUTPUT</c> when running under Actions, so a workflow
@@ -341,10 +354,20 @@ public sealed class VersionTask : FrostingTask<BuildContext>
     {
         var bump = c.Argument("bump", "none");
         var suffix = c.Argument("suffix", string.Empty);
+        var next = c.Argument("next", false);
 
-        var version = bump is "none" or "" ? c.ReadVersion() : c.BumpVersion(bump);
+        var version = (bump, next) switch
+        {
+            (not ("none" or ""), _) => c.BumpVersion(bump),
 
-        // A prerelease of the version that will be released NEXT, so NuGet orders it below that release.
+            // The file records what was LAST released, so a prerelease has to sit above it — hence the
+            // next patch. Suffixing the file's own value would produce 1.0.0-ci.7 AFTER 1.0.0 shipped,
+            // which NuGet orders below the release it follows.
+            (_, true) => c.NextPatch(),
+
+            _ => c.ReadVersion(),
+        };
+
         if (!string.IsNullOrWhiteSpace(suffix)) version = $"{version}-{suffix}";
 
         c.Information($"Version: {version}");

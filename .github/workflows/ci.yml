@@ -45,13 +45,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The version file marks what will be released NEXT, so suffixing it gives 1.0.0-ci.<run>.
-          # NuGet orders every such build BELOW the eventual 1.0.0, so a CI package can never shadow the
-          # release it precedes, and a consumer must opt into prereleases to see one at all.
+          # --next, not the file's own value: the file records what was LAST released, so suffixing it
+          # would give 1.0.0-ci.7 after 1.0.0 shipped — which NuGet orders BELOW the release it follows.
+          # The next patch puts prereleases above the last release and below the coming one, which is
+          # what a prerelease is supposed to mean.
           #
           # Cake composes it and writes version=X to $GITHUB_OUTPUT, so the whole version comes from one
           # place and later steps read it as a step output.
-          ./build.sh --target Version --suffix="ci.${GITHUB_RUN_NUMBER}"
+          ./build.sh --target Version --next=true --suffix="ci.${GITHUB_RUN_NUMBER}"
 
       # Pack depends on Test in the Cake pipeline, so this restores, builds, tests and packages in one
       # step. Pull requests run it too: packaging is where the static-web-asset plumbing actually gets
