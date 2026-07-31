@@ -164,13 +164,16 @@ jobs:
       # nuget.org first, then record. The reverse order can leave a committed bump and a tag claiming a
       # release that was never published, which then blocks retrying that same version.
       #
-      # NUGET_ORG_API_KEY is an ORGANISATION secret on pondhawktech, not a repository one. The Publish
-      # target refuses an empty key by name, because dotnet nuget push with a blank key returns a 403 —
+      # PUBLISH_API_KEY is whatever credential the feed being pushed to wants — the Publish target is
+      # feed-agnostic, so each step supplies its own. Here that is NUGET_ORG_API_KEY, an ORGANISATION
+      # secret on pondhawktech rather than a repository one; below it is the built-in GITHUB_TOKEN.
+      #
+      # Publish refuses an empty key by name, because dotnet nuget push with a blank one returns a 403 —
       # which reads as a permissions problem and sends you looking in entirely the wrong place.
       - name: Publish to nuget.org
         if: '!inputs.dry_run'
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+          PUBLISH_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
         run: ./build.sh --target Publish --source=https://api.nuget.org/v3/index.json
 
       # skipDuplicate here but not above: re-runs against the CI feed are routine, while on a feed where
@@ -178,7 +181,7 @@ jobs:
       - name: Mirror to GitHub Packages
         if: '!inputs.dry_run'
         env:
-          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_API_KEY: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./build.sh --target Publish \
             --source=https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \

@@ -404,7 +404,7 @@ public sealed class VerifyBundleTask : FrostingTask<BuildContext>
 /// <summary>
 /// Pushes the packages in <c>artifacts/</c> to a feed.
 ///
-/// <code>NUGET_API_KEY=... ./build.sh --target Publish --source=https://api.nuget.org/v3/index.json</code>
+/// <code>PUBLISH_API_KEY=... ./build.sh --target Publish --source=https://api.nuget.org/v3/index.json</code>
 ///
 /// <para>The key comes from the environment, not from an argument. A secret on a command line is visible
 /// in process listings and turns up in echoed commands, and Cake's own parser rejects an empty
@@ -420,11 +420,11 @@ public sealed class PublishTask : FrostingTask<BuildContext>
     public override void Run(BuildContext c)
     {
         var source = c.Argument<string>("source");
-        var apiKey = c.EnvironmentVariable("NUGET_API_KEY");
+        var apiKey = c.EnvironmentVariable("PUBLISH_API_KEY");
 
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new CakeException(
-                $"NUGET_API_KEY is not set, so nothing can be pushed to {source}. An empty key returns a " +
+                $"PUBLISH_API_KEY is not set, so nothing can be pushed to {source}. An empty key returns a " +
                 "403, which reads as a permissions problem rather than as a missing secret.");
 
         var packages = c.GetFiles($"{c.ArtifactsDir}/*.nupkg").ToList();

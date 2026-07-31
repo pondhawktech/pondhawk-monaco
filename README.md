@@ -184,7 +184,7 @@ Four things this component must get right, or it becomes something to fight rath
 ./build.sh --target Clean                   # Empty bin/, obj/, wwwroot/dist/ and artifacts/
 ./build.sh --target Version --bump=minor    # Rewrite the version file
 ./build.sh --target VerifyBundle --against=other.nupkg
-./build.sh --target Publish --source=...    # Key comes from $NUGET_API_KEY
+./build.sh --target Publish --source=...    # Key comes from $PUBLISH_API_KEY
 ```
 
 `build.ps1` is the same thing on Windows and takes the same arguments.
@@ -328,10 +328,11 @@ also what stops `none` from silently republishing.
 
 - **`NUGET_ORG_API_KEY`** — the nuget.org API key. It is an **organisation** secret on `pondhawktech`,
   shared across repositories rather than copied into each one, so nothing needs adding here as long as
-  its visibility includes this repository. The workflow passes it to Cake as `$NUGET_API_KEY` — by
+  its visibility includes this repository. The workflow passes it to Cake as `$PUBLISH_API_KEY` — by
   environment, not as an argument, since a secret on a command line shows up in process listings — and
   `Publish` refuses an empty one by name, because `dotnet nuget push` with a blank key returns a 403
-  that reads like a permissions problem. GitHub Packages needs nothing: it uses `GITHUB_TOKEN`.
+  that reads like a permissions problem. GitHub Packages needs nothing: it uses `GITHUB_TOKEN`, passed
+  through the same variable, because `Publish` is feed-agnostic and each step supplies its own key.
 - `release.yml` references a `nuget.org` **environment**, created automatically on first run. Adding a
   required reviewer to it makes every publish need approval — worth doing, since a version pushed to
   nuget.org can be unlisted but never replaced or deleted.

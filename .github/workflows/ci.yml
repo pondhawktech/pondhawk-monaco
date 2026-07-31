@@ -71,7 +71,7 @@ jobs:
       - name: Publish to GitHub Packages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:
-          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISH_API_KEY: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ./build.sh --target Publish \
             --source=https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \
