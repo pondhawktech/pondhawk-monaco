@@ -41,6 +41,9 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     private string? _appliedLanguage;
     private string? _appliedSchema;
     private IReadOnlyList<string>? _appliedSchemaFileMatch;
+
+    /// <summary>Highest edit revision accepted from JavaScript — see <see cref="OnDocumentChanged"/>.</summary>
+    private int _lastRevision;
     private string? _appliedTheme;
     private LiveEditorOptions? _appliedOptions;
     private IReadOnlyList<EditorMarker>? _appliedDiagnostics;
@@ -55,7 +58,14 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     /// <summary>Monaco language id — <c>csharp</c>, <c>yaml</c>, <c>json</c>, <c>sql</c>, <c>markdown</c>…</summary>
     [Parameter] public string Language { get; set; } = "plaintext";
 
-    /// <summary>Monaco theme id. Built-ins are <c>vs</c>, <c>vs-dark</c> and <c>hc-black</c>.</summary>
+    /// <summary>
+    /// Monaco theme id. Built-ins are <c>vs</c>, <c>vs-dark</c> and <c>hc-black</c>.
+    ///
+    /// <para><b>Page-global, unlike every other parameter here.</b> Monaco keeps one active theme for the
+    /// document, so setting this restyles every editor on the page and the last one to render wins. That
+    /// is Monaco's design — there is no per-editor theme to expose — and unlike the schema it cannot be
+    /// scoped around. Drive it from one place in the host application rather than per editor.</para>
+    /// </summary>
     [Parameter] public string Theme { get; set; } = "vs";
 
     /// <summary>
@@ -250,7 +260,13 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public async Task OnDocumentChanged(string value, int revision)
     {
-        _ = revision; // reserved: lets a future implementation discard out-of-order edits
+        // The revision counts edits on the JS side, so it only ever grows. An older one arriving after a
+        // newer one means two debounced callbacks crossed on the way here — a real possibility under
+        // Blazor Server, where each is a message over a circuit — and applying the older would put stale
+        // text back into a document the user has since moved on from.
+        if (revision < _lastRevision) return;
+        _lastRevision = revision;
+
         _lastValueFromEditor = value;
         Value = value;
 

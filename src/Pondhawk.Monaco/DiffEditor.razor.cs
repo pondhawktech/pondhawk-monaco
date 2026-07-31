@@ -38,6 +38,9 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
     private string? _appliedTheme;
     private DiffViewOptions? _appliedView;
 
+    /// <summary>Highest edit revision accepted from JavaScript — see <see cref="OnModifiedChanged"/>.</summary>
+    private int _lastRevision;
+
     /// <summary>The left-hand document — what is being compared against.</summary>
     [Parameter] public string Original { get; set; } = string.Empty;
 
@@ -55,7 +58,14 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
     /// <summary>Monaco language id, applied to both sides.</summary>
     [Parameter] public string Language { get; set; } = "plaintext";
 
-    /// <summary>Monaco theme id. Built-ins are <c>vs</c>, <c>vs-dark</c> and <c>hc-black</c>.</summary>
+    /// <summary>
+    /// Monaco theme id. Built-ins are <c>vs</c>, <c>vs-dark</c> and <c>hc-black</c>.
+    ///
+    /// <para><b>Page-global, unlike every other parameter here.</b> Monaco keeps one active theme for the
+    /// document, so setting this restyles every editor on the page and the last one to render wins. That
+    /// is Monaco's design — there is no per-editor theme to expose — and unlike the schema it cannot be
+    /// scoped around. Drive it from one place in the host application rather than per editor.</para>
+    /// </summary>
     [Parameter] public string Theme { get; set; } = "vs";
 
     /// <summary>Lock the right-hand side. Defaults to true: a diff is usually shown, not edited.</summary>
@@ -194,7 +204,10 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public async Task OnModifiedChanged(string value, int revision)
     {
-        _ = revision;
+        // Discard an edit that has been overtaken — see CodeEditor.OnDocumentChanged.
+        if (revision < _lastRevision) return;
+        _lastRevision = revision;
+
         _lastModifiedFromEditor = value;
         Modified = value;
 

@@ -466,6 +466,140 @@ describe('schema', () => {
   });
 });
 
+describe('diff editor', () => {
+  async function diffFixture(options = {}) {
+    const { mod, monaco } = await load();
+    warnings.length = 0;
+    mod.createDiff('d1', makeHost(), {
+      baseUrl: 'https://app.example/d',
+      original: 'before', modified: 'after', language: 'yaml',
+      tabSize: 2, fontSize: 12.5, sideBySide: true, readOnly: true, ...options,
+    });
+    return { mod, monaco };
+  }
+
+  test('two models are created and handed to the editor together', async () => {
+    const { monaco } = await diffFixture();
+
+    const created = calls(monaco, 'editor.createModel');
+    assert.equal(created.length, 2, 'one per side');
+    assert.deepEqual(created.map(c => c.args[0]), ['before', 'after']);
+
+    const { original, modified } = onlyCall(monaco, 'diff.setModel').args[0];
+    assert.equal(original.__value, 'before');
+    assert.equal(modified.__value, 'after');
+  });
+
+  test('tabSize lands on BOTH models, and indentation detection is off', async () => {
+    const { monaco } = await diffFixture({ tabSize: 8 });
+
+    const updates = calls(monaco, 'model.updateOptions');
+    assert.equal(updates.length, 2, 'a diff has two models and both need it');
+    assert.ok(updates.every(u => u.args[0].tabSize === 8));
+    assert.equal(onlyCall(monaco, 'editor.createDiffEditor').args[0].detectIndentation, false);
+  });
+
+  test('readOnly governs the modified side and the original is locked separately', async () => {
+    const { monaco } = await diffFixture({ readOnly: true, originalEditable: false });
+    const options = onlyCall(monaco, 'editor.createDiffEditor').args[0];
+
+    assert.equal(options.readOnly, true);
+    assert.equal(options.originalEditable, false);
+    assert.equal(options.renderSideBySide, true);
+  });
+
+  test('a side is addressed by name in both directions', async () => {
+    const { mod, monaco } = await diffFixture();
+    monaco.reset();
+
+    assert.equal(mod.getDiffValue('d1', 'original'), 'before');
+    assert.equal(mod.getDiffValue('d1', 'modified'), 'after');
+
+    mod.setDiffValue('d1', 'original', 'changed');
+    assert.equal(mod.getDiffValue('d1', 'original'), 'changed');
+    assert.equal(mod.getDiffValue('d1', 'modified'), 'after', 'the other side is untouched');
+  });
+
+  test('an unchanged side is not written back — the caret guard, doubled', async () => {
+    const { mod, monaco } = await diffFixture();
+    monaco.reset();
+
+    mod.setDiffValue('d1', 'modified', 'after');
+
+    assert.equal(calls(monaco, 'model.pushEditOperations').length, 0);
+  });
+
+  test('view options update in place rather than rebuilding the editor', async () => {
+    const { mod, monaco } = await diffFixture();
+    monaco.reset();
+
+    mod.setDiffOptions('d1', {
+      sideBySide: false, ignoreTrimWhitespace: true, overviewRuler: false,
+      readOnly: false, originalEditable: true, minimap: true, tabSize: 4, fontSize: 16,
+    });
+
+    const options = onlyCall(monaco, 'diff.updateOptions').args[0];
+    assert.equal(options.renderSideBySide, false, 'Monaco spells this renderSideBySide');
+    assert.equal(options.ignoreTrimWhitespace, true);
+    assert.equal(options.renderOverviewRuler, false);
+    assert.deepEqual(options.minimap, { enabled: true });
+    assert.equal(calls(monaco, 'editor.createDiffEditor').length, 0, 'rebuilding would lose both models');
+    assert.equal(calls(monaco, 'model.updateOptions').filter(u => u.args[0].tabSize === 4).length, 2);
+  });
+
+  test('language changes apply to both sides', async () => {
+    const { mod, monaco } = await diffFixture();
+    monaco.reset();
+
+    mod.setDiffLanguage('d1', 'json');
+
+    assert.equal(calls(monaco, 'editor.setModelLanguage').length, 2);
+  });
+
+  test('navigation moves the diff and focuses where the user will type', async () => {
+    const { mod, monaco } = await diffFixture();
+    monaco.reset();
+
+    mod.goToDiff('d1', 'next');
+    mod.goToDiff('d1', 'previous');
+    mod.goToDiff('d1', 'nonsense');
+    mod.revealFirstDiff('d1');
+
+    assert.deepEqual(calls(monaco, 'diff.goToDiff').map(c => c.args[0]),
+      ['next', 'previous', 'next'], 'anything not previous means next');
+    assert.equal(calls(monaco, 'editor.focus').length, 3, 'focus follows the jump');
+    assert.equal(calls(monaco, 'diff.revealFirstDiff').length, 1);
+  });
+
+  test('disposal releases the editor before either model', async () => {
+    const { mod, monaco } = await diffFixture();
+    monaco.reset();
+
+    mod.disposeDiff('d1');
+
+    const order = monaco.log.map(c => c.name);
+    const models = order.map((n, i) => (n === 'model.dispose' ? i : -1)).filter(i => i >= 0);
+
+    assert.equal(models.length, 2, 'both sides disposed');
+    assert.ok(order.indexOf('diff.dispose') < models[0],
+      'a model disposed while still attached leaves the editor reading a dead one');
+    assert.equal(calls(monaco, 'diff.onDidUpdateDiff.dispose').length, 1);
+  });
+
+  test('unknown ids are no-ops across the whole diff surface', async () => {
+    const { mod } = await diffFixture();
+
+    assert.equal(mod.getDiffValue('nope', 'original'), '');
+    assert.doesNotThrow(() => mod.setDiffValue('nope', 'original', 'x'));
+    assert.doesNotThrow(() => mod.setDiffLanguage('nope', 'json'));
+    assert.doesNotThrow(() => mod.setDiffOptions('nope', { sideBySide: true }));
+    assert.doesNotThrow(() => mod.goToDiff('nope', 'next'));
+    assert.doesNotThrow(() => mod.revealFirstDiff('nope'));
+    assert.doesNotThrow(() => mod.diffLayout('nope'));
+    assert.doesNotThrow(() => mod.disposeDiff('nope'));
+  });
+});
+
 describe('stylesheet injection', () => {
   test('the stylesheet is added once however many editors exist', async () => {
     const { mod } = await editorFixture();

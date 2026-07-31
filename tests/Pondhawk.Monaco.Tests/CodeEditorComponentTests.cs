@@ -346,6 +346,69 @@ public class CodeEditorComponentTests
         module.Invocations["configureSchema"].Count.ShouldBe(2, "the schema now covers different documents");
     }
 
+    /// <summary>
+    /// The revision only ever grows on the JS side, so a smaller one arriving later means two debounced
+    /// callbacks crossed in flight. Applying the older would push stale text back into a document the
+    /// user has already moved past.
+    /// </summary>
+    [Test]
+    public async Task Discards_an_edit_that_a_newer_one_has_overtaken()
+    {
+        var (ctx, _) = Arrange();
+        using var _ctx = ctx;
+
+        var seen = new List<string>();
+        var cut = ctx.Render<CodeEditor>(p => p.Add(c => c.ValueChanged, v => seen.Add(v)));
+
+        await cut.InvokeAsync(() => cut.Instance.OnDocumentChanged("newer", 5));
+        await cut.InvokeAsync(() => cut.Instance.OnDocumentChanged("older", 3));
+        await cut.InvokeAsync(() => cut.Instance.OnDocumentChanged("newest", 6));
+
+        seen.ShouldBe(["newer", "newest"]);
+    }
+
+    [Test]
+    public async Task Forwards_the_imperative_editor_calls()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>();
+
+        await cut.Instance.RevealLineAsync(12, 4);
+        await cut.Instance.LayoutAsync();
+        await cut.Instance.GetValueAsync();
+        await cut.Instance.SetScrollTopAsync(240);
+        await cut.Instance.GetScrollTopAsync();
+        await cut.Instance.HasFocusAsync();
+
+        module.VerifyInvoke("revealLine");
+        module.VerifyInvoke("layout");
+        module.VerifyInvoke("getValue");
+        module.VerifyInvoke("hasTextFocus");
+        module.VerifyInvoke("getScrollTop");
+        module.Invocations["setScrollTop"].Single().Arguments[1].ShouldBe(240d);
+    }
+
+    /// <summary>Before the editor exists these must answer from .NET rather than reach for JavaScript,
+    /// or a caller racing first render gets an exception instead of a sensible default.</summary>
+    [Test]
+    public async Task Answers_without_javascript_before_the_editor_exists()
+    {
+        var ctx = new BunitContext();
+        ctx.Services.AddLogging();
+        using var _ctx = ctx;
+
+        var editor = new CodeEditor();
+
+        (await editor.GetValueAsync()).ShouldBe(string.Empty);
+        (await editor.GetPositionAsync()).ShouldBeNull();
+        (await editor.GetSelectionAsync()).ShouldBeNull();
+        (await editor.GetScrollTopAsync()).ShouldBe(0);
+        (await editor.HasFocusAsync()).ShouldBeFalse();
+        (await editor.RunActionAsync("editor.action.formatDocument")).ShouldBeFalse();
+    }
+
     [Test]
     public async Task Disposes_the_editor_before_releasing_the_dotnet_reference()
     {

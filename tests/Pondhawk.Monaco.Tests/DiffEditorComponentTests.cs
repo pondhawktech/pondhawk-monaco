@@ -222,6 +222,57 @@ public class DiffEditorComponentTests
     }
 
     [Test]
+    public async Task Discards_an_edit_that_a_newer_one_has_overtaken()
+    {
+        var (ctx, _) = Arrange();
+        using var _ctx = ctx;
+
+        var seen = new List<string>();
+        var cut = ctx.Render<DiffEditor>(p => p
+            .Add(c => c.ReadOnly, false)
+            .Add(c => c.ModifiedChanged, v => seen.Add(v)));
+
+        await cut.InvokeAsync(() => cut.Instance.OnModifiedChanged("newer", 5));
+        await cut.InvokeAsync(() => cut.Instance.OnModifiedChanged("older", 3));
+
+        seen.ShouldBe(["newer"]);
+    }
+
+    [Test]
+    public async Task Forwards_navigation_and_layout_to_the_diff()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<DiffEditor>();
+
+        await cut.Instance.GoToNextDiffAsync();
+        await cut.Instance.GoToPreviousDiffAsync();
+        await cut.Instance.RevealFirstDiffAsync();
+        await cut.Instance.LayoutAsync();
+
+        module.Invocations["goToDiff"].Select(i => i.Arguments[1] as string).ShouldBe(["next", "previous"]);
+        module.VerifyInvoke("revealFirstDiff");
+        module.VerifyInvoke("diffLayout");
+    }
+
+    [Test]
+    public async Task Reads_either_side_by_name()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<DiffEditor>();
+
+        await cut.Instance.GetValueAsync(DiffSide.Original);
+        await cut.Instance.GetValueAsync(DiffSide.Modified);
+
+        // The side crosses the boundary as a string, so the enum has to map to what the JS switches on.
+        module.Invocations["getDiffValue"].Select(i => i.Arguments[1] as string)
+            .ShouldBe(["original", "modified"]);
+    }
+
+    [Test]
     public async Task Disposes_the_diff_editor_before_releasing_the_dotnet_reference()
     {
         var (ctx, module) = Arrange();

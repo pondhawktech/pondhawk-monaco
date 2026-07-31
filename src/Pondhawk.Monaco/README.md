@@ -198,8 +198,10 @@ await editor.DefineThemeAsync(new EditorTheme
 
 Then set `Theme="my-dusk"`.
 
-**Themes are global.** Monaco keeps one registry and one active theme per page, so defining or selecting
-one affects every editor on it — Monaco's design, not this component's.
+**Themes are global — including the `Theme` parameter itself.** Monaco keeps one registry and one active
+theme per document, so `Theme` is the one parameter here that is not per-editor: setting it restyles
+every editor on the page, and the last to render wins. Monaco exposes no per-editor theme, so unlike
+`Schema` this cannot be scoped around. Drive it from one place in your application.
 
 Write colours as `#rrggbb` throughout. Monaco itself is inconsistent — rule colours must omit the `#`
 while `Colors` requires it, and the wrong form throws rather than being ignored — so both are normalised
@@ -211,7 +213,7 @@ for you.
 |---|---|---|---|
 | `Value` | `string` | `""` | The document. Supports `@bind-Value` |
 | `Language` | `string` | `plaintext` | Monaco language id |
-| `Theme` | `string` | `vs` | `vs`, `vs-dark`, `hc-black` |
+| `Theme` | `string` | `vs` | `vs`, `vs-dark`, `hc-black` — **page-global**, see below |
 | `Schema` | `string?` | `null` | JSON Schema as text |
 | `SchemaFileMatch` | `IReadOnlyList<string>?` | all | Which documents the schema covers |
 | `Diagnostics` | `IReadOnlyList<EditorMarker>?` | `null` | Your own squiggles |
