@@ -125,12 +125,26 @@ jobs:
       #
       # No --skip-duplicate here, unlike CI: on a feed where versions are permanent, a duplicate means
       # something is wrong and should be loud.
+      # NUGET_ORG_API_KEY is an ORGANISATION secret, shared across pondhawktech rather than copied into
+      # each repository. Fail early and by name if it is missing: dotnet nuget push with an empty key
+      # gets a 403 from nuget.org, which reads as a permissions problem rather than a missing secret.
+      - name: Check the publishing key is available
+        if: '!inputs.dry_run'
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+        run: |
+          [ -n "$NUGET_KEY" ] || {
+            echo "::error::NUGET_ORG_API_KEY is not visible to this repository."
+            echo "::error::It is an organisation secret — check its visibility includes pondhawk-monaco."
+            exit 1
+          }
+
       - name: Publish to nuget.org
         if: '!inputs.dry_run'
         run: |
           dotnet nuget push artifacts/*.nupkg \
             --source https://api.nuget.org/v3/index.json \
-            --api-key "${{ secrets.NUGET_API_KEY }}"
+            --api-key "${{ secrets.NUGET_ORG_API_KEY }}"
 
       - name: Mirror to GitHub Packages
         if: '!inputs.dry_run'

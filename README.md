@@ -285,8 +285,11 @@ also what stops `none` from silently republishing.
 
 ### One-time setup
 
-- **`NUGET_API_KEY`** — a nuget.org API key, added as a repository secret. Nothing else is needed:
-  GitHub Packages authenticates with the built-in `GITHUB_TOKEN`.
+- **`NUGET_ORG_API_KEY`** — the nuget.org API key. It is an **organisation** secret on `pondhawktech`,
+  shared across repositories rather than copied into each one, so nothing needs adding here as long as
+  its visibility includes this repository. The release workflow checks it is non-empty before pushing,
+  because `dotnet nuget push` with an empty key returns a 403 that reads like a permissions problem
+  rather than a missing secret. GitHub Packages needs nothing — it uses the built-in `GITHUB_TOKEN`.
 - `release.yml` references a `nuget.org` **environment**, created automatically on first run. Adding a
   required reviewer to it makes every publish need approval — worth doing, since a version pushed to
   nuget.org can be unlisted but never replaced or deleted.
