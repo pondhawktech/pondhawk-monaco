@@ -74,23 +74,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$BUMP" = "none" ]; then
-            version="$(.github/scripts/version.sh)"
-          else
-            version="$(.github/scripts/version.sh bump "$BUMP")"
-          fi
+          # Cake rewrites the file if asked, and writes version=X.Y.Z to $GITHUB_OUTPUT itself.
+          ./build.sh --target Version --bump="$BUMP"
 
-          # A tag that already exists means this version was released before. nuget.org would reject the
-          # duplicate anyway, but failing here says why instead of failing at the push with a 409.
-          # This is also what stops `bump: none` from silently republishing.
-          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
-            echo "::error::Tag v${version} already exists. Choose a bump rather than 'none'."
+      # A tag that already exists means this version was released before. nuget.org would reject the
+      # duplicate anyway, but failing here says why rather than failing at the push with a 409 — and it
+      # is what stops `bump: none` from silently republishing.
+      - name: Refuse a version that was already released
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "::error::Tag v${VERSION} already exists. Choose a bump rather than 'none'."
             exit 1
           fi
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
           {
-            echo "### Releasing \`${version}\`"
+            echo "### Releasing \`${VERSION}\`"
             echo ""
             echo "- Bump: \`${BUMP}\`"
             echo "- Commit: \`${GITHUB_SHA}\`"
@@ -144,7 +147,7 @@ jobs:
           }
 
           echo "Comparing against CI run ${run_id}: $(basename "$ci_pkg")"
-          .github/scripts/compare-bundles.sh "$ci_pkg" "artifacts/Pondhawk.Monaco.${{ steps.version.outputs.version }}.nupkg"
+          ./build.sh --target VerifyBundle --against="$ci_pkg"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -161,36 +164,25 @@ jobs:
       # nuget.org first, then record. The reverse order can leave a committed bump and a tag claiming a
       # release that was never published, which then blocks retrying that same version.
       #
-      # No --skip-duplicate here, unlike CI: on a feed where versions are permanent, a duplicate means
-      # something is wrong and should be loud.
-      # NUGET_ORG_API_KEY is an ORGANISATION secret, shared across pondhawktech rather than copied into
-      # each repository. Fail early and by name if it is missing: dotnet nuget push with an empty key
-      # gets a 403 from nuget.org, which reads as a permissions problem rather than a missing secret.
-      - name: Check the publishing key is available
-        if: '!inputs.dry_run'
-        env:
-          NUGET_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
-        run: |
-          [ -n "$NUGET_KEY" ] || {
-            echo "::error::NUGET_ORG_API_KEY is not visible to this repository."
-            echo "::error::It is an organisation secret — check its visibility includes pondhawk-monaco."
-            exit 1
-          }
-
+      # NUGET_ORG_API_KEY is an ORGANISATION secret on pondhawktech, not a repository one. The Publish
+      # target refuses an empty key by name, because dotnet nuget push with a blank key returns a 403 —
+      # which reads as a permissions problem and sends you looking in entirely the wrong place.
       - name: Publish to nuget.org
         if: '!inputs.dry_run'
-        run: |
-          dotnet nuget push artifacts/*.nupkg \
-            --source https://api.nuget.org/v3/index.json \
-            --api-key "${{ secrets.NUGET_ORG_API_KEY }}"
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+        run: ./build.sh --target Publish --source=https://api.nuget.org/v3/index.json
 
+      # skipDuplicate here but not above: re-runs against the CI feed are routine, while on a feed where
+      # versions are permanent a duplicate means something is wrong and should be loud.
       - name: Mirror to GitHub Packages
         if: '!inputs.dry_run'
+        env:
+          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dotnet nuget push artifacts/*.nupkg \
-            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-            --api-key "${{ secrets.GITHUB_TOKEN }}" \
-            --skip-duplicate
+          ./build.sh --target Publish \
+            --source=https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \
+            --skipDuplicate=true
 
       # Now that the package exists, record the version that produced it. [skip ci] because this commit
       # changes no code, and a CI prerelease build of it would be noise.

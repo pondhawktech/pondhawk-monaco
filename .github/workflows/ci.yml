@@ -48,10 +48,10 @@ jobs:
           # The version file marks what will be released NEXT, so suffixing it gives 1.0.0-ci.<run>.
           # NuGet orders every such build BELOW the eventual 1.0.0, so a CI package can never shadow the
           # release it precedes, and a consumer must opt into prereleases to see one at all.
-          version="$(.github/scripts/version.sh)-ci.${GITHUB_RUN_NUMBER}"
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Building $version"
+          #
+          # Cake composes it and writes version=X to $GITHUB_OUTPUT, so the whole version comes from one
+          # place and later steps read it as a step output.
+          ./build.sh --target Version --suffix="ci.${GITHUB_RUN_NUMBER}"
 
       # Pack depends on Test in the Cake pipeline, so this restores, builds, tests and packages in one
       # step. Pull requests run it too: packaging is where the static-web-asset plumbing actually gets
@@ -70,8 +70,9 @@ jobs:
       # explicit keeps the failure a skipped step rather than a confusing 403.
       - name: Publish to GitHub Packages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          NUGET_API_KEY: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dotnet nuget push artifacts/*.nupkg \
-            --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-            --api-key "${{ secrets.GITHUB_TOKEN }}" \
-            --skip-duplicate
+          ./build.sh --target Publish \
+            --source=https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json \
+            --skipDuplicate=true
