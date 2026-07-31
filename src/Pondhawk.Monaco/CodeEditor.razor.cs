@@ -32,6 +32,8 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     private string? _appliedSchema;
     private string? _appliedTheme;
     private LiveEditorOptions? _appliedOptions;
+    private IReadOnlyList<EditorMarker>? _appliedDiagnostics;
+    private IReadOnlyList<EditorDecoration>? _appliedDecorations;
 
     /// <summary>The document text. Supports <c>@bind-Value</c>.</summary>
     [Parameter] public string Value { get; set; } = string.Empty;
@@ -56,6 +58,15 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
 
     /// <summary>Host-supplied diagnostics, shown alongside the language service's own.</summary>
     [Parameter] public IReadOnlyList<EditorMarker>? Diagnostics { get; set; }
+
+    /// <summary>
+    /// Styled regions — line highlights, glyph-margin icons, inline colouring. Replace the list to change
+    /// the set; an empty list clears it.
+    ///
+    /// <para>Decorations are styling, where <see cref="Diagnostics"/> is a claim that something is wrong.
+    /// Search hits, merge-conflict regions and coverage gutters belong here.</para>
+    /// </summary>
+    [Parameter] public IReadOnlyList<EditorDecoration>? Decorations { get; set; }
 
     /// <summary>Render the document read-only. Selection and copy still work.</summary>
     [Parameter] public bool ReadOnly { get; set; }
@@ -117,6 +128,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
             // Schema and markers may have been supplied before the editor existed.
             await ApplySchemaAsync();
             await ApplyMarkersAsync();
+            await ApplyDecorationsAsync();
             return;
         }
 
@@ -153,6 +165,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
 
         await ApplySchemaAsync();
         await ApplyMarkersAsync();
+        await ApplyDecorationsAsync();
     }
 
     private LiveEditorOptions CurrentOptions() => new()
@@ -172,11 +185,28 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
         await _interop.ConfigureSchemaAsync(Schema, SchemaFileMatch);
     }
 
+    /// <summary>
+    /// Pushes markers only when the set actually differs. <see cref="EditorMarker"/> is a record, so
+    /// SequenceEqual compares by value — without this, every parent render re-sent the whole list and
+    /// setModelMarkers rebuilt the squiggles and the overview ruler each time.
+    /// </summary>
     private async Task ApplyMarkersAsync()
     {
         if (_interop is null || Diagnostics is null) return;
+        if (_appliedDiagnostics is not null && _appliedDiagnostics.SequenceEqual(Diagnostics)) return;
 
+        _appliedDiagnostics = [.. Diagnostics];
         await _interop.SetMarkersAsync(_id, Diagnostics);
+    }
+
+    /// <summary>Same value-comparison as markers — see <see cref="ApplyMarkersAsync"/>.</summary>
+    private async Task ApplyDecorationsAsync()
+    {
+        if (_interop is null || Decorations is null) return;
+        if (_appliedDecorations is not null && _appliedDecorations.SequenceEqual(Decorations)) return;
+
+        _appliedDecorations = [.. Decorations];
+        await _interop.SetDecorationsAsync(_id, Decorations);
     }
 
     /// <summary>
@@ -237,6 +267,31 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     {
         if (_created && _interop is not null)
             await _interop.SetSelectionAsync(_id, selection);
+    }
+
+    /// <summary>Vertical scroll offset in pixels. Pair with <see cref="GetPositionAsync"/> to save and
+    /// restore view state across a tab switch.</summary>
+    public async Task<double> GetScrollTopAsync() =>
+        _created && _interop is not null ? await _interop.GetScrollTopAsync(_id) : 0;
+
+    /// <summary>Restore a scroll offset previously read from <see cref="GetScrollTopAsync"/>.</summary>
+    public async Task SetScrollTopAsync(double scrollTop)
+    {
+        if (_created && _interop is not null)
+            await _interop.SetScrollTopAsync(_id, scrollTop);
+    }
+
+    /// <summary>
+    /// Register a custom theme, then set <see cref="Theme"/> to its <see cref="EditorTheme.Name"/>.
+    ///
+    /// <para><b>Themes are global.</b> Monaco keeps one registry and one active theme per page, so this
+    /// affects every editor on it — Monaco's design, not this component's. Registering an existing name
+    /// replaces it.</para>
+    /// </summary>
+    public async Task DefineThemeAsync(EditorTheme theme)
+    {
+        if (_created && _interop is not null)
+            await _interop.DefineThemeAsync(theme);
     }
 
     /// <summary>Put keyboard focus in the editor — after opening a panel, or restoring a tab.</summary>

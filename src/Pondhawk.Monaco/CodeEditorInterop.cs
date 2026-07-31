@@ -40,6 +40,18 @@ internal sealed class CodeEditorInterop(IJSRuntime js, string baseUrl) : IAsyncD
     public async Task SetMarkersAsync(string id, IReadOnlyList<EditorMarker> markers) =>
         await (await Module).InvokeVoidAsync("setMarkers", id, markers);
 
+    public async Task SetDecorationsAsync(string id, IReadOnlyList<EditorDecoration> decorations) =>
+        await (await Module).InvokeVoidAsync("setDecorations", id, decorations);
+
+    public async Task DefineThemeAsync(EditorTheme theme) =>
+        await (await Module).InvokeVoidAsync("defineTheme", theme);
+
+    public async Task<double> GetScrollTopAsync(string id) =>
+        await (await Module).InvokeAsync<double>("getScrollTop", id);
+
+    public async Task SetScrollTopAsync(string id, double scrollTop) =>
+        await (await Module).InvokeVoidAsync("setScrollTop", id, scrollTop);
+
     public async Task<EditorPosition?> GetPositionAsync(string id) =>
         await (await Module).InvokeAsync<EditorPosition?>("getPosition", id);
 

@@ -19,6 +19,7 @@
                         Theme="@_theme"
                         Schema="@_schema"
                         Diagnostics="@_markers"
+                        Decorations="@_decorations"
                         ReadOnly="@_readOnly"
                         TabSize="@_tabSize"
                         FontSize="@_fontSize"
@@ -39,6 +40,8 @@
                 <option value="vs">vs</option>
                 <option value="vs-dark">vs-dark</option>
                 <option value="hc-black">hc-black</option>
+                @* Only selectable once "Define + apply a custom theme" has registered it. *@
+                <option value="pondhawk-dusk">pondhawk-dusk (custom)</option>
             </select>
 
             <hr />
@@ -82,10 +85,17 @@
 
             <hr />
 
+            <label>Decorations</label>
+            <button @onclick="HighlightRuntime">Highlight the runtime block</button>
+            <button @onclick="() => _decorations = []">Clear decorations</button>
+
+            <hr />
+
             <label>Editor API</label>
             <button @onclick="Format">Format document</button>
             <button @onclick="() => _editor?.FocusAsync()">Focus</button>
             <button @onclick="ShowCursor">Where is the caret?</button>
+            <button @onclick="ApplyCustomTheme">Define + apply a custom theme</button>
             <div class="stat muted">@_cursor</div>
 
             <hr />
@@ -109,6 +119,53 @@
     private int _tabSize = 2;
     private double _fontSize = 12.5;
     private string _cursor = "—";
+
+    private IReadOnlyList<EditorDecoration> _decorations = [];
+
+    // Whole-line highlight plus a glyph in the margin and a mark on the overview ruler. The class names
+    // are the demo's own CSS — nothing is scoped by the component, so a missing class renders nothing.
+    private void HighlightRuntime()
+    {
+        _decorations =
+        [
+            new EditorDecoration
+            {
+                StartLine = 6, StartColumn = 1, EndLine = 9, EndColumn = 1,
+                WholeLine = true,
+                ClassName = "demo-highlight",
+                GlyphMarginClassName = "demo-glyph",
+                OverviewRulerColor = "#f59e0b",
+                HoverMessage = "The **runtime** block, highlighted by the host.",
+            },
+        ];
+
+        _cursor = $"{_decorations.Count} decoration(s) set";
+    }
+
+    private async Task ApplyCustomTheme()
+    {
+        if (_editor is null) return;
+
+        // Themes are global in Monaco: defining or selecting one affects every editor on the page.
+        await _editor.DefineThemeAsync(new EditorTheme
+        {
+            Name = "pondhawk-dusk",
+            Base = "vs-dark",
+            Rules =
+            [
+                new EditorTokenRule { Token = "comment", Foreground = "#7f9f7f", FontStyle = "italic" },
+                new EditorTokenRule { Token = "string", Foreground = "#e0b0a0" },
+                new EditorTokenRule { Token = "type", Foreground = "#8fb3d9" },
+            ],
+            Colors = new Dictionary<string, string>
+            {
+                ["editor.background"] = "#1b1d23",
+                ["editorLineNumber.foreground"] = "#5a6472",
+            },
+        });
+
+        _theme = "pondhawk-dusk";
+    }
 
     private void OnTabSizeChanged(ChangeEventArgs e) =>
         _tabSize = int.TryParse(e.Value?.ToString(), out var n) ? n : 2;
@@ -278,6 +335,11 @@
     .panel label.inline { display: flex; align-items: center; gap: .4rem; margin-top: .2rem;
                           text-transform: none; letter-spacing: 0; font-size: .85rem; color: inherit; }
     .panel label.inline select { margin-left: auto; }
+    /* Decoration classes. Global on purpose — Monaco renders its own DOM, so a scoped rule never
+       reaches it, and a class that does not exist simply draws nothing with no error. */
+    .demo-highlight { background: rgba(245, 158, 11, .18); }
+    .demo-glyph { background: #f59e0b; border-radius: 50%; width: 8px !important; height: 8px;
+                  margin: 6px 0 0 6px; }
     .stat { font-variant-numeric: tabular-nums; font-size: .9rem; }
     .muted { color: #6b7280; }
     .hint { font-size: .8rem; color: #6b7280; line-height: 1.4; }

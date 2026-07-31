@@ -218,6 +218,95 @@ public class CodeEditorComponentTests
     }
 
     [Test]
+    public void Pushes_decorations_only_when_the_set_changes()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        EditorDecoration[] one = [new() { StartLine = 1, StartColumn = 1, EndLine = 1, EndColumn = 5 }];
+        // A DIFFERENT list instance holding an EQUAL decoration: records compare by value, so this must
+        // not count as a change. Rebuilding the list each render is the normal Blazor pattern.
+        EditorDecoration[] same = [new() { StartLine = 1, StartColumn = 1, EndLine = 1, EndColumn = 5 }];
+        EditorDecoration[] other = [new() { StartLine = 9, StartColumn = 1, EndLine = 9, EndColumn = 5 }];
+
+        var cut = ctx.Render<CodeEditor>(p => p.Add(c => c.Decorations, one));
+        module.Invocations["setDecorations"].Count.ShouldBe(1);
+
+        cut.Render(p => p.Add(c => c.Decorations, same));
+        module.Invocations["setDecorations"].Count.ShouldBe(1, "an equal set is not a change");
+
+        cut.Render(p => p.Add(c => c.Decorations, other));
+        module.Invocations["setDecorations"].Count.ShouldBe(2);
+    }
+
+    /// <summary>
+    /// Markers had no change guard at all: every parent render re-sent the whole list, rebuilding the
+    /// squiggles and the overview ruler each time.
+    /// </summary>
+    [Test]
+    public void Pushes_markers_only_when_the_set_changes()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        EditorMarker[] one =
+            [new() { StartLine = 3, StartColumn = 1, EndLine = 3, EndColumn = 9, Message = "boom" }];
+        EditorMarker[] same =
+            [new() { StartLine = 3, StartColumn = 1, EndLine = 3, EndColumn = 9, Message = "boom" }];
+
+        var cut = ctx.Render<CodeEditor>(p => p.Add(c => c.Diagnostics, one));
+        cut.Render(p => p.Add(c => c.Diagnostics, same));
+
+        module.Invocations["setMarkers"].Count.ShouldBe(1);
+    }
+
+    [TestCase("startLine")]
+    [TestCase("endColumn")]
+    [TestCase("className")]
+    [TestCase("glyphMarginClassName")]
+    [TestCase("wholeLine")]
+    [TestCase("hoverMessage")]
+    [TestCase("overviewRulerColor")]
+    public void Emits_the_decoration_names_the_js_module_reads(string property)
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        ctx.Render<CodeEditor>(p => p.Add(c => c.Decorations,
+            [new EditorDecoration { StartLine = 1, StartColumn = 1, EndLine = 1, EndColumn = 2 }]));
+
+        var sent = module.Invocations["setDecorations"].Single().Arguments[1]!;
+        var json = JsonSerializer.SerializeToElement(sent, InteropJson);
+
+        json[0].TryGetProperty(property, out _).ShouldBeTrue();
+    }
+
+    [TestCase("name")]
+    [TestCase("base")]
+    [TestCase("inherit")]
+    [TestCase("rules")]
+    [TestCase("colors")]
+    public async Task Emits_the_theme_names_the_js_module_reads(string property)
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>();
+        await cut.Instance.DefineThemeAsync(new EditorTheme
+        {
+            Name = "pondhawk-dark",
+            Base = "vs-dark",
+            Rules = [new EditorTokenRule { Token = "comment", Foreground = "#6a9955" }],
+            Colors = new Dictionary<string, string> { ["editor.background"] = "#1e1e1e" },
+        });
+
+        var sent = module.Invocations["defineTheme"].Single().Arguments[0]!;
+        var json = JsonSerializer.SerializeToElement(sent, InteropJson);
+
+        json.TryGetProperty(property, out _).ShouldBeTrue();
+    }
+
+    [Test]
     public async Task Runs_a_named_monaco_action()
     {
         var (ctx, module) = Arrange();

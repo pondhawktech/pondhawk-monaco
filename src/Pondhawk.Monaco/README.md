@@ -128,6 +128,59 @@ separately, so the two never overwrite each other:
 Positions are **1-based** and end positions are **exclusive** — to underline the single character at
 column 5, use `StartColumn = 5, EndColumn = 6`.
 
+## Decorations
+
+Styling, where diagnostics are a claim that something is wrong — search hits, merge-conflict regions,
+coverage gutters, blame lines. Replace the list to change the set; an empty list clears it.
+
+```razor
+<CodeEditor @bind-Value="src" Decorations="@_decorations" />
+
+@code {
+    private IReadOnlyList<EditorDecoration> _decorations = [];
+
+    private void HighlightBlock() => _decorations = [
+        new EditorDecoration
+        {
+            StartLine = 6, StartColumn = 1, EndLine = 9, EndColumn = 1,
+            WholeLine = true,
+            ClassName = "my-highlight",              // background across the line
+            GlyphMarginClassName = "my-glyph",       // icon left of the line numbers
+            OverviewRulerColor = "#f59e0b",          // mark on the right-hand ruler
+            HoverMessage = "Explained on hover, as **markdown**.",
+        },
+    ];
+}
+```
+
+The class names are **yours** — nothing is scoped by this component, so prefix them, and note that a
+class which does not exist draws nothing at all with no error. The CSS must be global: Monaco renders
+its own DOM, so a scoped `.razor.css` rule never reaches it.
+
+Supplying a `GlyphMarginClassName` turns Monaco's glyph margin on, since a glyph drawn into a margin
+that is not there is invisible. It is never turned back off.
+
+## Custom themes
+
+```csharp
+await editor.DefineThemeAsync(new EditorTheme
+{
+    Name = "my-dusk",
+    Base = "vs-dark",
+    Rules = [ new EditorTokenRule { Token = "comment", Foreground = "#7f9f7f", FontStyle = "italic" } ],
+    Colors = new Dictionary<string, string> { ["editor.background"] = "#1b1d23" },
+});
+```
+
+Then set `Theme="my-dusk"`.
+
+**Themes are global.** Monaco keeps one registry and one active theme per page, so defining or selecting
+one affects every editor on it — Monaco's design, not this component's.
+
+Write colours as `#rrggbb` throughout. Monaco itself is inconsistent — rule colours must omit the `#`
+while `Colors` requires it, and the wrong form throws rather than being ignored — so both are normalised
+for you.
+
 ## `CodeEditor` parameters
 
 | Parameter | Type | Default | |
@@ -138,6 +191,7 @@ column 5, use `StartColumn = 5, EndColumn = 6`.
 | `Schema` | `string?` | `null` | JSON Schema as text |
 | `SchemaFileMatch` | `IReadOnlyList<string>?` | all | Which documents the schema covers |
 | `Diagnostics` | `IReadOnlyList<EditorMarker>?` | `null` | Your own squiggles |
+| `Decorations` | `IReadOnlyList<EditorDecoration>?` | `null` | Styled regions — see above |
 | `ReadOnly` | `bool` | `false` | Selection and copy still work |
 | `Minimap` | `bool` | `false` | The overview strip; it costs width |
 | `TabSize` | `int` | `2` | |
@@ -163,6 +217,8 @@ first render applies to the running editor without losing the document, scroll p
 | `RevealLineAsync(line, column)` | Scroll a line into view and put the caret on it |
 | `LayoutAsync()` | Re-measure after the container resizes |
 | `RunActionAsync(actionId)` | Run any built-in Monaco action — see below |
+| `GetScrollTopAsync()` / `SetScrollTopAsync(px)` | Vertical scroll offset |
+| `DefineThemeAsync(theme)` | Register a custom theme — see above |
 
 ### `RunActionAsync` is the whole command surface
 

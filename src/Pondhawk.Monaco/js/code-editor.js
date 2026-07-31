@@ -193,7 +193,12 @@ export function create(id, host, options) {
     automaticLayout: false,
   });
 
-  const entry = { editor, model, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [] };
+  const entry = {
+    editor, model, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [],
+    // Created lazily by setDecorations. A collection owns its own ids, so replacing the set is one
+    // call and nothing has to carry decoration ids across the interop boundary.
+    decorations: null,
+  };
   editors.set(id, entry);
 
   // Stamp the registry key onto the host. Nothing reads it at runtime — it exists so a live page can be
@@ -333,7 +338,15 @@ export async function runAction(id, actionId) {
     return true;
   }
 
-  entry.editor.trigger('pondhawk', actionId, null);
+  // Not a registered action. Some built-ins (undo, redo) are commands rather than actions and are only
+  // reachable through trigger(). Monaco routes an unknown id to its unexpected-error handler, which
+  // prints a stack trace — so catch it and say the useful thing instead.
+  try {
+    entry.editor.trigger('pondhawk', actionId, null);
+  } catch {
+    console.warn(`[pondhawk-monaco] '${actionId}' is not a Monaco action or command; nothing ran.`);
+  }
+
   return false;
 }
 
@@ -354,6 +367,81 @@ export function setMarkers(id, markers) {
       : m.severity === 'info' ? monaco.MarkerSeverity.Info : monaco.MarkerSeverity.Error,
     source: m.source,
   })));
+}
+
+/**
+ * Replace the decoration set — line highlights, glyph-margin icons, inline styling.
+ *
+ * Decorations are what markers are not: styling rather than diagnostics. Search hits, merge conflict
+ * regions, coverage gutters, blame lines. Monaco addresses them by generated id, but a decorations
+ * COLLECTION owns its own ids, so .NET can stay declarative and hand over the whole set each time —
+ * matching how Diagnostics already works, rather than making the host track ids across interop.
+ */
+export function setDecorations(id, decorations) {
+  const entry = editors.get(id);
+  if (!entry) return;
+
+  entry.decorations ??= entry.editor.createDecorationsCollection();
+
+  // Monaco's glyph margin is off by default, and a glyph decoration drawn into a margin that is not
+  // there renders nothing at all, with no error. Asking for a glyph is asking for somewhere to put it.
+  // Only ever turned ON: switching it back off would fight a caller who enabled it via EditorOptions.
+  if ((decorations ?? []).some(d => d.glyphMarginClassName)) {
+    entry.editor.updateOptions({ glyphMargin: true });
+  }
+
+  entry.decorations.set((decorations ?? []).map(d => ({
+    range: {
+      startLineNumber: d.startLine, startColumn: d.startColumn,
+      endLineNumber: d.endLine, endColumn: d.endColumn,
+    },
+    options: {
+      // Every field is optional; Monaco ignores the ones left undefined.
+      className: d.className ?? undefined,
+      inlineClassName: d.inlineClassName ?? undefined,
+      glyphMarginClassName: d.glyphMarginClassName ?? undefined,
+      linesDecorationsClassName: d.lineNumberClassName ?? undefined,
+      isWholeLine: d.wholeLine ?? false,
+      hoverMessage: d.hoverMessage ? { value: d.hoverMessage } : undefined,
+      overviewRuler: d.overviewRulerColor
+        ? { color: d.overviewRulerColor, position: monaco.editor.OverviewRulerLane.Right }
+        : undefined,
+    },
+  })));
+}
+
+export function getScrollTop(id) {
+  return editors.get(id)?.editor.getScrollTop() ?? 0;
+}
+
+export function setScrollTop(id, scrollTop) {
+  editors.get(id)?.editor.setScrollTop(scrollTop);
+}
+
+/**
+ * Register a custom theme. Monaco themes are GLOBAL — defining one affects every editor on the page,
+ * and so does selecting it, which is Monaco's design rather than a choice made here.
+ *
+ * Colour formats are the trap. Rule colours must be bare hex with NO leading '#', while the `colors`
+ * map requires one; Monaco throws on the wrong form rather than ignoring it. Both are normalised here
+ * so a caller can write '#264f78' everywhere and have it work.
+ */
+export function defineTheme(theme) {
+  const bare = c => (typeof c === 'string' ? c.replace(/^#/, '') : c);
+  const hashed = c => (typeof c === 'string' && !c.startsWith('#') ? `#${c}` : c);
+
+  monaco.editor.defineTheme(theme.name, {
+    base: theme.base ?? 'vs',
+    inherit: theme.inherit ?? true,
+    rules: (theme.rules ?? []).map(r => ({
+      token: r.token,
+      foreground: r.foreground ? bare(r.foreground) : undefined,
+      background: r.background ? bare(r.background) : undefined,
+      fontStyle: r.fontStyle ?? undefined,
+    })),
+    colors: Object.fromEntries(
+      Object.entries(theme.colors ?? {}).map(([k, v]) => [k, hashed(v)])),
+  });
 }
 
 export function revealLine(id, lineNumber, column) {
@@ -378,6 +466,7 @@ export function dispose(id) {
 
   clearTimeout(entry.changeTimer);
   entry.subscriptions.forEach(s => s.dispose());
+  entry.decorations?.clear();
   entry.editor.dispose();
   entry.model.dispose();
   // The DotNetObjectReference is disposed on the .NET side; dropping it here only releases our handle.
