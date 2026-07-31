@@ -110,8 +110,9 @@ already bundles, and the computation runs in the `editor.worker.js` the editor l
 
 ```
 Pondhawk.Monaco.slnx              all four projects
+Directory.Build.props             the released version — single source of truth
 .github/workflows/                CI and release
-.github/scripts/next-version.sh   the version bump, shared by both workflows
+.github/scripts/version.sh        reads and bumps that version
 src/Pondhawk.Monaco/              RCL, NuGet-packable
   README.md                       the package readme — usage only, shipped to nuget.org
   js/                             esbuild sources (Monaco + monaco-yaml + workers)
@@ -216,36 +217,55 @@ Two workflows, both driving `./build.sh` rather than re-implementing the build i
 
 | | Trigger | Feed | Version |
 |---|---|---|---|
-| `ci.yml` | push to `main`, and every PR | GitHub Packages | `1.4.3-ci.<run>` |
-| `release.yml` | manual, pick the bump | nuget.org (and GitHub Packages) | `1.4.3` |
+| `ci.yml` | push to `main`, and every PR | GitHub Packages | `1.0.0-ci.<run>` |
+| `release.yml` | manual, pick the bump | nuget.org (and GitHub Packages) | `1.0.0` |
 
-### Versions come from tags
+### The version lives in a file
 
-`.github/scripts/next-version.sh` reads the newest `vMAJOR.MINOR.PATCH` tag and applies the requested
-bump. Nothing in the repo records the version, so nothing can fall out of sync with what was published —
-the csproj keeps its `1.0.0` default, and CI always passes `--packageVersion` explicitly.
+`Directory.Build.props` holds it, and it is the single source of truth:
 
-```
-newest tag v1.4.2  →  patch 1.4.3   minor 1.5.0   major 2.0.0
+```xml
+<VersionPrefix>1.0.0</VersionPrefix>
 ```
 
-Prerelease tags and non-version tags are skipped, so a `v1.5.0-rc1` never becomes the base to count from.
-With no tags at all the base is `0.0.0`, which makes **`major` the first release: 1.0.0**.
+MSBuild imports that for every project automatically, so `./build.sh --target Pack` with no arguments
+produces the real version — what the file says is what packs, locally and in CI alike. Read the file and
+you know what the next release will be.
 
-CI publishes the *next patch* as a prerelease — `1.4.3-ci.87`. NuGet orders that below the eventual
-`1.4.3`, so a CI build can never occupy or shadow a real release, and consumers only see one if they opt
-into prereleases.
+**The file is the version to publish next**, not the last one published. So the release workflow packs
+exactly what it reads, and the bump is applied *before* publishing:
+
+```
+file 1.0.0  →  none 1.0.0   patch 1.0.1   minor 1.1.0   major 2.0.0
+```
+
+`none` publishes the file untouched — that is the first release, and the retry path if a publish fails
+part-way. Every other choice rewrites the file first. After a successful release the file therefore
+records what was last published, and the workflow commits it back to `main` with `[skip ci]`.
+
+The commit happens **after** the package is pushed, never before: a committed bump and a tag for a
+release that never published would block retrying that version.
+
+CI suffixes the same file — `1.0.0-ci.87`. NuGet orders that below the eventual `1.0.0`, so a CI build
+can never occupy or shadow the release it precedes, and consumers only see one if they opt into
+prereleases.
+
+Tags are still created (`v1.0.0`, plus a GitHub release with the nupkg attached) — as release markers,
+and as the check that stops a version being published twice.
 
 ### Releasing
 
-Run **Release to NuGet.org** from the Actions tab, choose `patch`/`minor`/`major`, and optionally tick
-**dry run** to build and pack without publishing anything. On a real run the order is: test → pack →
-push to nuget.org → mirror to GitHub Packages → tag the built commit and open a GitHub release.
+Run **Release to NuGet.org** from the Actions tab and choose `none`/`patch`/`minor`/`major`. Tick
+**dry run** to build and pack without publishing or committing anything.
 
-The push comes *before* the tag deliberately. A published package missing its tag is a one-command fix; a
-tag whose version was never published blocks retrying that version.
+**The very first release is `none`** — the file already reads `1.0.0`, and bumping would skip past it.
 
-Releases must run from `main`, and the workflow refuses a version whose tag already exists.
+On a real run the order is: resolve the version → test → pack → verify the nupkg carries the expected
+version → push to nuget.org → mirror to GitHub Packages → commit the bumped file → tag and open a GitHub
+release.
+
+Releases must run from `main`, and the workflow refuses a version whose tag already exists — which is
+also what stops `none` from silently republishing.
 
 ### One-time setup
 
@@ -257,6 +277,9 @@ Releases must run from `main`, and the workflow refuses a version whose tag alre
 - Package metadata (`PackageLicenseExpression`, `RepositoryUrl`, readme) lives in the library csproj.
   `RepositoryUrl` is not optional: GitHub Packages resolves package ownership from it and rejects the
   push without it.
+- The release workflow pushes the version bump to `main`. If you add branch protection, `github-actions`
+  needs permission to push — otherwise the publish succeeds and only the bump commit fails, leaving the
+  file behind what was released.
 
 ## Status
 

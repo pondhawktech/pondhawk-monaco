@@ -1,7 +1,8 @@
 name: Release to NuGet.org
 
-# Manually triggered. Pick which part of the version to increase; the new number is derived from the
-# newest v*.*.* tag, so the repo never carries a version number that has to be kept in sync by hand.
+# Manually triggered. The version lives in Directory.Build.props and is the single source of truth —
+# what the file says is what MSBuild packs. This workflow optionally bumps it, publishes, then commits
+# the bump, so after a successful run the file records what was last released.
 #
 # A push to nuget.org is PERMANENT — a published version can be unlisted but never replaced or deleted.
 # Hence the dry run, the branch guard, and the check that the tag does not already exist.
@@ -10,11 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Which part of the version to increase'
+        description: 'Version to publish: bump the file first, or none to publish it as-is'
         type: choice
         required: true
         default: patch
         options:
+          - none
           - patch
           - minor
           - major
@@ -25,7 +27,7 @@ on:
         default: false
 
 permissions:
-  contents: write   # create the tag and the GitHub release
+  contents: write   # commit the version bump, create the tag and the GitHub release
   packages: write   # mirror the released version to GitHub Packages
 
 concurrency:
@@ -48,8 +50,6 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # tags: the version source of truth
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -61,7 +61,9 @@ jobs:
           cache: npm
           cache-dependency-path: src/Pondhawk.Monaco/js/package-lock.json
 
-      - name: Compute release version
+      # Rewrites Directory.Build.props in the working tree. NOT committed here — see the commit step
+      # further down, which runs only after the package is actually published.
+      - name: Resolve version
         id: version
         env:
           # Via the environment rather than inlined into the script. A `choice` input is constrained to
@@ -71,12 +73,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="$(.github/scripts/next-version.sh "$BUMP")"
+          if [ "$BUMP" = "none" ]; then
+            version="$(.github/scripts/version.sh)"
+          else
+            version="$(.github/scripts/version.sh bump "$BUMP")"
+          fi
 
           # A tag that already exists means this version was released before. nuget.org would reject the
           # duplicate anyway, but failing here says why instead of failing at the push with a 409.
+          # This is also what stops `bump: none` from silently republishing.
           if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
-            echo "::error::Tag v${version} already exists."
+            echo "::error::Tag v${version} already exists. Choose a bump rather than 'none'."
             exit 1
           fi
 
@@ -89,10 +96,17 @@ jobs:
             echo "- Dry run: \`${{ inputs.dry_run }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Runs the full pipeline: restore, build, test, pack. Pack depends on Test, so a failing test stops
-      # the release before anything is published.
+      # No --packageVersion: MSBuild reads Directory.Build.props, which the step above already holds at
+      # the right value. One source of truth, so the nuspec cannot disagree with the file.
       - name: Build, test and pack
-        run: ./build.sh --target Pack --packageVersion=${{ steps.version.outputs.version }}
+        run: ./build.sh --target Pack
+
+      - name: Verify the package carries the expected version
+        run: |
+          set -euo pipefail
+          expected="artifacts/Pondhawk.Monaco.${{ steps.version.outputs.version }}.nupkg"
+          [ -f "$expected" ] || { echo "::error::Expected $expected; artifacts/ holds: $(ls artifacts/)"; exit 1; }
+          echo "Packed $expected"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -104,11 +118,10 @@ jobs:
         if: inputs.dry_run
         run: |
           echo "Dry run: built ${{ steps.version.outputs.version }} and published nothing."
-          echo "The package is attached to this run as an artifact."
+          echo "Directory.Build.props was bumped in the runner only; nothing was committed."
 
-      # nuget.org first, tag second. The reverse order can leave a tag claiming a version that was never
-      # published, which then blocks retrying that same version. A push that succeeds without its tag is
-      # the recoverable failure of the two.
+      # nuget.org first, then record. The reverse order can leave a committed bump and a tag claiming a
+      # release that was never published, which then blocks retrying that same version.
       #
       # No --skip-duplicate here, unlike CI: on a feed where versions are permanent, a duplicate means
       # something is wrong and should be loud.
@@ -127,7 +140,29 @@ jobs:
             --api-key "${{ secrets.GITHUB_TOKEN }}" \
             --skip-duplicate
 
-      # Creates the tag on the exact commit that was built — not on whatever main points at by now.
+      # Now that the package exists, record the version that produced it. [skip ci] because this commit
+      # changes no code, and a CI prerelease build of it would be noise.
+      - name: Commit the version bump
+        if: '!inputs.dry_run'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # `bump: none` leaves the file untouched, so there may be nothing to commit.
+          if git diff --quiet -- Directory.Build.props; then
+            echo "Directory.Build.props already reads ${VERSION}; nothing to commit."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Directory.Build.props
+          git commit -m "Release ${VERSION} [skip ci]"
+          git push origin HEAD:main
+
+      # Tags the commit that was built. Where a bump was committed above that commit is HEAD and carries
+      # the matching version file; with `bump: none` HEAD is unchanged and already correct.
       - name: Tag and create the GitHub release
         if: '!inputs.dry_run'
         env:
@@ -136,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "v${VERSION}" \
-            --target "${GITHUB_SHA}" \
+            --target "$(git rev-parse HEAD)" \
             --title "v${VERSION}" \
             --generate-notes \
             artifacts/*.nupkg

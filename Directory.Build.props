@@ -1,0 +1,21 @@
+<Project>
+
+  <!--
+    The released version, and the single source of truth for it.
+
+    MSBuild imports this automatically for every project in the repo, so a plain `dotnet pack`, or the
+    Pack target of `build.sh`, produces the real version with no arguments passed: the number you read
+    here is the number that ships.
+
+    The release workflow rewrites this line and commits it, so after a successful release it records what
+    was last published. CI appends a `-ci.<run>` suffix on top of it for prerelease builds, which NuGet
+    orders below the release itself.
+
+    Edit by hand only to correct a mistake; normal bumps go through the Release workflow so the version,
+    the tag, the GitHub release and the published package cannot disagree.
+  -->
+  <PropertyGroup>
+    <VersionPrefix>1.0.0</VersionPrefix>
+  </PropertyGroup>
+
+</Project>

@@ -26,9 +26,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Tags are the version source of truth, and a shallow clone has none of them.
-          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -48,10 +45,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Next patch, marked prerelease: with 1.4.2 released, CI builds 1.4.3-ci.<run>. NuGet orders
-          # every such build BELOW the eventual 1.4.3, so a CI package can never shadow a real release,
-          # and a consumer must opt into prereleases to see one at all.
-          version="$(.github/scripts/next-version.sh patch)-ci.${GITHUB_RUN_NUMBER}"
+          # The version file marks what will be released NEXT, so suffixing it gives 1.0.0-ci.<run>.
+          # NuGet orders every such build BELOW the eventual 1.0.0, so a CI package can never shadow the
+          # release it precedes, and a consumer must opt into prereleases to see one at all.
+          version="$(.github/scripts/version.sh)-ci.${GITHUB_RUN_NUMBER}"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building $version"
