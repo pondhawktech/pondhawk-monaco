@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/build/">
+    <Project Path="build/Build.csproj" />
+  </Folder>
+  <Folder Name="/demo/">
+    <Project Path="demo/Pondhawk.Monaco.Demo/Pondhawk.Monaco.Demo.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Pondhawk.Monaco/Pondhawk.Monaco.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pondhawk.Monaco.Tests/Pondhawk.Monaco.Tests.csproj" />
+  </Folder>
+</Solution>

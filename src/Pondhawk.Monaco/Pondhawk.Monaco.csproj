@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <PackageId>Pondhawk.Blazor.CodeEditor</PackageId>
+    <PackageId>Pondhawk.Monaco</PackageId>
     <Authors>Pond Hawk Technologies Inc.</Authors>
     <Copyright>Copyright (c) 2026 Pond Hawk Technologies Inc.</Copyright>
     <Description>Blazor code editor wrapping Monaco with JSON-Schema-driven completion for YAML and JSON. Consumers need no JavaScript toolchain.</Description>
@@ -16,13 +16,13 @@
 
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageProjectUrl>https://github.com/pondhawktech/pondhawk-code-editor</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/pondhawktech/pondhawk-monaco</PackageProjectUrl>
 
     <!--
       Required, not merely nice metadata: GitHub Packages resolves which repository owns a NuGet package
       from this URL, and rejects the push outright when it is absent.
     -->
-    <RepositoryUrl>https://github.com/pondhawktech/pondhawk-code-editor</RepositoryUrl>
+    <RepositoryUrl>https://github.com/pondhawktech/pondhawk-monaco</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
@@ -75,7 +75,7 @@
   <!--
     The bundle is produced during THIS build, so it is not yet known to the static-web-assets machinery
     when items are first evaluated. Re-globbing after bundling is what gets dist/ into the package as
-    _content/Pondhawk.Blazor.CodeEditor/dist/.
+    _content/Pondhawk.Monaco/dist/.
   -->
   <Target Name="IncludeBundledAssets" AfterTargets="BundleJs" BeforeTargets="ResolveStaticWebAssetsInputs">
     <ItemGroup>

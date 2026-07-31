@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using Shouldly;
 
-namespace Pondhawk.Blazor.CodeEditor.Tests;
+namespace Pondhawk.Monaco.Tests;
 
 /// <summary>
 /// Component behaviour, with the JS module mocked.
@@ -20,7 +20,7 @@ public class CodeEditorComponentTests
     // using a relative one — bUnit's fake base is http://localhost/. That this must be absolute is the
     // point: a relative path would resolve against the document URL and break under a non-root base href.
     private const string ModulePath =
-        "http://localhost/_content/Pondhawk.Blazor.CodeEditor/dist/code-editor.js";
+        "http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js";
 
     private static (BunitContext Ctx, BunitJSModuleInterop Module) Arrange()
     {
@@ -78,7 +78,7 @@ public class CodeEditorComponentTests
 
         baseUrl.ShouldNotBeNull();
         Uri.IsWellFormedUriString(baseUrl, UriKind.Absolute).ShouldBeTrue();
-        baseUrl.ShouldEndWith("_content/Pondhawk.Blazor.CodeEditor/dist");
+        baseUrl.ShouldEndWith("_content/Pondhawk.Monaco/dist");
     }
 
     /// <summary>

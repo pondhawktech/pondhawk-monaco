@@ -31,14 +31,14 @@ public sealed class BuildContext : FrostingContext
     /// <summary>The solution, and the single source of truth for what this repo contains. Restore, Build
     /// and Test run against it, so a project added to the solution is picked up here without this file
     /// being edited — and cannot silently fall out of the build by being forgotten.</summary>
-    public string Solution => "Pondhawk.CodeEditor.slnx";
+    public string Solution => "Pondhawk.Monaco.slnx";
 
     /// <summary>The packable project. Pack names it directly rather than running against the solution:
     /// the demo and this build project are ordinary non-packable projects, and packing the solution would
     /// emit nupkgs for them too.</summary>
-    public string Library => "src/Pondhawk.Blazor.CodeEditor/Pondhawk.Blazor.CodeEditor.csproj";
+    public string Library => "src/Pondhawk.Monaco/Pondhawk.Monaco.csproj";
 
-    public string Demo => "demo/Pondhawk.CodeEditor.Demo/Pondhawk.CodeEditor.Demo.csproj";
+    public string Demo => "demo/Pondhawk.Monaco.Demo/Pondhawk.Monaco.Demo.csproj";
 
     /// <summary>This build project's own directory. Cake is executing out of <c>build/bin</c> whenever a
     /// target runs, so it is the one directory Clean must leave alone.</summary>
@@ -64,10 +64,10 @@ public sealed class BuildContext : FrostingContext
 
     /// <summary>Where the JS sources live. The bundle step runs here, and nowhere else in the ecosystem —
     /// consumers of the package never need node.</summary>
-    public string JsDir => "src/Pondhawk.Blazor.CodeEditor/js";
+    public string JsDir => "src/Pondhawk.Monaco/js";
 
     /// <summary>Bundled output. A build artifact, not source: gitignored and regenerated.</summary>
-    public string DistDir => "src/Pondhawk.Blazor.CodeEditor/wwwroot/dist";
+    public string DistDir => "src/Pondhawk.Monaco/wwwroot/dist";
 
     public string ArtifactsDir => "artifacts";
 

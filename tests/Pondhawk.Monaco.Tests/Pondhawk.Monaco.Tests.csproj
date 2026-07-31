@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Pondhawk.Blazor.CodeEditor\Pondhawk.Blazor.CodeEditor.csproj" />
+    <ProjectReference Include="..\..\src\Pondhawk.Monaco\Pondhawk.Monaco.csproj" />
   </ItemGroup>
 
 </Project>

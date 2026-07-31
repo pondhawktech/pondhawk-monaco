@@ -1,4 +1,4 @@
-# Pondhawk.Blazor.CodeEditor
+# Pondhawk.Monaco
 
 A Blazor code editor wrapping **Monaco** — the editor behind VS Code — with JSON-Schema-driven
 completion for YAML and JSON.
@@ -13,13 +13,13 @@ The component loads its own module and injects its own stylesheet.
 ## Install
 
 ```bash
-dotnet add package Pondhawk.Blazor.CodeEditor
+dotnet add package Pondhawk.Monaco
 ```
 
 Add the namespace to `_Imports.razor`:
 
 ```razor
-@using Pondhawk.Blazor.CodeEditor
+@using Pondhawk.Monaco
 ```
 
 That is the whole setup. Requires **.NET 10**.
@@ -219,6 +219,6 @@ but Server, MAUI and hybrid models have not been exercised yet. Reports welcome.
 
 ## Links
 
-Source, design notes and issues: <https://github.com/pondhawktech/pondhawk-code-editor>
+Source, design notes and issues: <https://github.com/pondhawktech/pondhawk-monaco>
 
 MIT licensed.

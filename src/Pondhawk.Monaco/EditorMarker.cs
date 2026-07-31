@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Pondhawk.Blazor.CodeEditor;
+namespace Pondhawk.Monaco;
 
 /// <summary>Severity of a squiggle in the editor gutter and overview ruler.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<MarkerSeverity>))]

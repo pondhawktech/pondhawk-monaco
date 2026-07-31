@@ -1,4 +1,4 @@
-# Pondhawk Code Editor
+# Pondhawk.Monaco
 
 A general-purpose Blazor code editor wrapping **Monaco** — the editor behind VS Code — packaged so that
 consuming apps need **no JavaScript toolchain at all**.
@@ -109,21 +109,21 @@ already bundles, and the computation runs in the `editor.worker.js` the editor l
 ## Layout
 
 ```
-Pondhawk.CodeEditor.slnx          all four projects
+Pondhawk.Monaco.slnx              all four projects
 .github/workflows/                CI and release
 .github/scripts/next-version.sh   the version bump, shared by both workflows
-src/Pondhawk.Blazor.CodeEditor/   RCL, NuGet-packable
+src/Pondhawk.Monaco/              RCL, NuGet-packable
   README.md                       the package readme — usage only, shipped to nuget.org
   js/                             esbuild sources (Monaco + monaco-yaml + workers)
   wwwroot/dist/                   bundled output — build artifact, gitignored
-tests/…Tests/                     bUnit tests over the interop boundary
-demo/Pondhawk.CodeEditor.Demo/    Blazor WASM harness
+tests/Pondhawk.Monaco.Tests/      bUnit tests over the interop boundary
+demo/Pondhawk.Monaco.Demo/        Blazor WASM harness
 build/                            Cake Frosting build
 docs/                             design notes
 ```
 
 The npm/esbuild step exists **only in this repo**. Consumers get a NuGet package containing pre-bundled
-assets under `_content/Pondhawk.Blazor.CodeEditor/`.
+assets under `_content/Pondhawk.Monaco/`.
 
 ## On size
 
@@ -142,7 +142,7 @@ applications and cannot know which languages a consumer needs.
 
 Four things this component must get right, or it becomes something to fight rather than use:
 
-1. **Worker URLs** resolve under `_content/Pondhawk.Blazor.CodeEditor/` — the base path is passed from
+1. **Worker URLs** resolve under `_content/Pondhawk.Monaco/` — the base path is passed from
    .NET rather than guessed, since it differs between hosting models.
 2. **Disposal** — `IAsyncDisposable` disposes the Monaco editor *and* the `IJSObjectReference`. Without
    it, editors leak on every navigation.
@@ -168,7 +168,7 @@ Node and npm are needed **only in this repo**, and only to produce `wwwroot/dist
 
 ### The solution is the project list
 
-`Pondhawk.CodeEditor.slnx` holds all four projects, and the build reads them from it rather than keeping
+`Pondhawk.Monaco.slnx` holds all four projects, and the build reads them from it rather than keeping
 its own list — `Restore`, `Build` and `Test` run against the solution, and `Clean` parses it for the
 directories to empty. A project added to the solution is picked up by the build without `build/Program.cs`
 being touched, and cannot quietly fall out of CI by being forgotten in a second list.
@@ -183,8 +183,8 @@ Two places still name a project directly, both deliberately:
 Because the solution exists, the usual root-level commands work directly:
 
 ```bash
-dotnet build Pondhawk.CodeEditor.slnx
-dotnet test  Pondhawk.CodeEditor.slnx
+dotnet build Pondhawk.Monaco.slnx
+dotnet test  Pondhawk.Monaco.slnx
 ```
 
 These skip Cake but not the JavaScript: the library's `BundleJs` target runs `BeforeBuild` either way, so

@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
-namespace Pondhawk.Blazor.CodeEditor;
+namespace Pondhawk.Monaco;
 
 /// <summary>
 /// Typed wrapper over the <c>code-editor.js</c> module. Owns the module reference and disposes it.

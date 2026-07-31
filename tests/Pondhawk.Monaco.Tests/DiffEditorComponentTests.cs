@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using Shouldly;
 
-namespace Pondhawk.Blazor.CodeEditor.Tests;
+namespace Pondhawk.Monaco.Tests;
 
 /// <summary>
 /// Diff-editor behaviour, with the JS module mocked.
@@ -21,7 +21,7 @@ public class DiffEditorComponentTests
     private static readonly JsonSerializerOptions InteropJson = new(JsonSerializerDefaults.Web);
 
     private const string ModulePath =
-        "http://localhost/_content/Pondhawk.Blazor.CodeEditor/dist/code-editor.js";
+        "http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js";
 
     private static (BunitContext Ctx, BunitJSModuleInterop Module) Arrange()
     {
@@ -90,7 +90,7 @@ public class DiffEditorComponentTests
 
         baseUrl.ShouldNotBeNull();
         Uri.IsWellFormedUriString(baseUrl, UriKind.Absolute).ShouldBeTrue();
-        baseUrl.ShouldEndWith("_content/Pondhawk.Blazor.CodeEditor/dist");
+        baseUrl.ShouldEndWith("_content/Pondhawk.Monaco/dist");
     }
 
     /// <summary>The echo guard, on the modified side.</summary>

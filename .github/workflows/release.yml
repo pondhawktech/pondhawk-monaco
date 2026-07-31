@@ -59,7 +59,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: src/Pondhawk.Blazor.CodeEditor/js/package-lock.json
+          cache-dependency-path: src/Pondhawk.Monaco/js/package-lock.json
 
       - name: Compute release version
         id: version

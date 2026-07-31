@@ -1,9 +1,9 @@
 using System.Text.Json;
 using NUnit.Framework;
-using Pondhawk.Blazor.CodeEditor;
+using Pondhawk.Monaco;
 using Shouldly;
 
-namespace Pondhawk.Blazor.CodeEditor.Tests;
+namespace Pondhawk.Monaco.Tests;
 
 /// <summary>
 /// What .NET actually puts on the wire for the JavaScript module to read.

@@ -1,7 +1,7 @@
 // Bundles Monaco + monaco-yaml into ../wwwroot/dist.
 //
 // This step exists ONLY in this repo. Consumers get the emitted assets inside the NuGet package under
-// _content/Pondhawk.Blazor.CodeEditor/dist/ and never need node, npm or a bundler.
+// _content/Pondhawk.Monaco/dist/ and never need node, npm or a bundler.
 //
 // monaco-yaml v5 is ESM-only and its language server runs in a worker, so a bundler is not optional —
 // which is precisely why BlazorMonaco (AMD loader) cannot host it.

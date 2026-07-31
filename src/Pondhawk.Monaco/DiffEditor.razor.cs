@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
-namespace Pondhawk.Blazor.CodeEditor;
+namespace Pondhawk.Monaco;
 
 /// <summary>
 /// A Monaco-backed side-by-side (or inline) diff.
@@ -16,7 +16,7 @@ namespace Pondhawk.Blazor.CodeEditor;
 /// </summary>
 public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
 {
-    private const string AssetPath = "_content/Pondhawk.Blazor.CodeEditor/dist";
+    private const string AssetPath = "_content/Pondhawk.Monaco/dist";
 
     [Inject] private IJSRuntime Js { get; set; } = default!;
     [Inject] private NavigationManager Navigation { get; set; } = default!;

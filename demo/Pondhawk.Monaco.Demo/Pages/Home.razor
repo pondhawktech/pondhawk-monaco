@@ -1,12 +1,12 @@
 @page "/"
-@using Pondhawk.Blazor.CodeEditor
+@using Pondhawk.Monaco
 @inject HttpClient Http
 
-<PageTitle>Pondhawk CodeEditor — demo</PageTitle>
+<PageTitle>Pondhawk.Monaco — editor demo</PageTitle>
 
 <div class="demo">
     <header>
-        <strong>Pondhawk.Blazor.CodeEditor</strong>
+        <strong>Pondhawk.Monaco</strong>
         <span class="sub">Monaco in Blazor WASM · no JS toolchain in this app</span>
     </header>
 
@@ -163,7 +163,7 @@
             ORDER BY calls DESC;
             """),
         new("markdown", "Markdown (highlighting only)", """
-            # Pondhawk CodeEditor
+            # Pondhawk.Monaco
 
             A Blazor wrapper over **Monaco**.
 
