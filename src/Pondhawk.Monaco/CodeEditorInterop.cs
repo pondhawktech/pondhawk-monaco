@@ -73,8 +73,8 @@ internal sealed class CodeEditorInterop(IJSRuntime js, string baseUrl) : IAsyncD
     public async Task<bool> RunActionAsync(string id, string actionId) =>
         await (await Module).InvokeAsync<bool>("runAction", id, actionId);
 
-    public async Task ConfigureSchemaAsync(string schemaJson, IReadOnlyList<string>? fileMatch) =>
-        await (await Module).InvokeVoidAsync("configureSchema", schemaJson, fileMatch);
+    public async Task ConfigureSchemaAsync(string id, string schemaJson, IReadOnlyList<string>? fileMatch) =>
+        await (await Module).InvokeVoidAsync("configureSchema", id, schemaJson, fileMatch);
 
     public async Task RevealLineAsync(string id, int line, int column) =>
         await (await Module).InvokeVoidAsync("revealLine", id, line, column);

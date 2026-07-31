@@ -19,9 +19,10 @@ export function reset() {
 
 const disposable = (name) => ({ dispose: () => record(`${name}.dispose`) });
 
-function makeModel(value, language) {
+function makeModel(value, language, uri) {
   const model = {
     __kind: 'model',
+    uri: uri ?? { toString: () => 'inmemory://model/1' },
     __value: value ?? '',
     __language: language,
     __options: {},
@@ -118,12 +119,15 @@ function makeDiffEditor(host, options) {
 // tests agree with a Monaco that does not exist.
 export const MarkerSeverity = { Hint: 1, Info: 2, Warning: 4, Error: 8 };
 
+// Top level in Monaco, alongside MarkerSeverity. Only parse/toString are used.
+export const Uri = { parse: (value) => ({ toString: () => value, __uri: value }) };
+
 export const editor = {
   OverviewRulerLane: { Left: 1, Center: 2, Right: 4, Full: 7 },
 
-  createModel(value, language) {
-    record('editor.createModel', value, language);
-    return makeModel(value, language);
+  createModel(value, language, uri) {
+    record('editor.createModel', value, language, uri?.toString());
+    return makeModel(value, language, uri);
   },
   create(host, options) {
     record('editor.create', options);

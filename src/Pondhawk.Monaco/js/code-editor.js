@@ -52,6 +52,14 @@ let workersReady = false;
 let yamlConfigured = null;
 
 /**
+ * id -> { schema, fileMatch }. Monaco's JSON and YAML schema configuration is PAGE-GLOBAL — one call
+ * replaces the lot — so a per-editor Schema parameter can only work if every editor's schema is held
+ * here and the whole set is re-applied together. Configuring one editor used to overwrite the others,
+ * leaving every document on the page validating against whichever rendered last.
+ */
+const schemas = new Map();
+
+/**
  * Point Monaco's worker loader at our own assets. The base path is supplied by .NET rather than guessed:
  * it differs between hosting models and base-href configurations, and a wrong guess fails only at the
  * moment the language service is first needed — long after startup, where it is hard to diagnose.
@@ -112,15 +120,33 @@ function checkLanguage(language) {
  * Register a JSON Schema for both YAML (monaco-yaml) and JSON (Monaco's built-in service).
  * Called again whenever the schema changes; monaco-yaml's configure returns a disposable we replace.
  */
-export function configureSchema(schemaJson, fileMatch) {
+export function configureSchema(id, schemaJson, fileMatch) {
   const schema = typeof schemaJson === 'string' ? JSON.parse(schemaJson) : schemaJson;
-  const match = fileMatch?.length ? fileMatch : ['*'];
-  const uri = 'https://pondhawk.local/schema.json';
+
+  // Default scope is this editor's own document, addressed by its model URI. The old default of ['*']
+  // meant every schema claimed every document, so the last one configured won the page.
+  const own = editors.get(id)?.model.uri.toString();
+  const match = fileMatch?.length ? fileMatch : (own ? [own] : ['*']);
+
+  schemas.set(id, { schema, fileMatch: match });
+  applySchemas();
+}
+
+/**
+ * Re-applies every live editor's schema as one set. Each gets a distinct schema URI keyed by editor id,
+ * because the services index by that URI — a shared key would collapse them back into one.
+ */
+function applySchemas() {
+  const all = [...schemas.entries()].map(([id, entry]) => ({
+    uri: `https://pondhawk.local/schema/${id}.json`,
+    fileMatch: entry.fileMatch,
+    schema: entry.schema,
+  }));
 
   monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
     validate: true,
     enableSchemaRequest: false,
-    schemas: [{ uri, fileMatch: match, schema }],
+    schemas: all,
   });
 
   yamlConfigured?.dispose();
@@ -130,7 +156,7 @@ export function configureSchema(schemaJson, fileMatch) {
     format: true,
     hover: true,
     completion: true,
-    schemas: [{ uri, fileMatch: match, schema }],
+    schemas: all,
   });
 }
 
@@ -161,7 +187,12 @@ export function create(id, host, options) {
   dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
 
   checkLanguage(options.language);
-  const model = monaco.editor.createModel(options.value ?? '', options.language ?? 'plaintext');
+
+  // An explicit URI, not Monaco's generated one: it is what a schema's fileMatch targets, so without it
+  // a schema cannot be scoped to a single editor. Keyed by the registry id, so it is unique per editor.
+  const language = options.language ?? 'plaintext';
+  const model = monaco.editor.createModel(
+    options.value ?? '', language, monaco.Uri.parse(`inmemory://pondhawk/${id}.${language}`));
 
   // tabSize is a MODEL option, not an editor option. Passing it to create() sets it on the model Monaco
   // would have created for itself — and we supply our own, so it is dropped silently.
@@ -469,6 +500,10 @@ export function dispose(id) {
   entry.decorations?.clear();
   entry.editor.dispose();
   entry.model.dispose();
+
+  // Retract this editor's schema. Left behind it would keep claiming documents by a fileMatch pointing
+  // at a model that no longer exists.
+  if (schemas.delete(id)) applySchemas();
   // The DotNetObjectReference is disposed on the .NET side; dropping it here only releases our handle.
   editors.delete(id);
 }

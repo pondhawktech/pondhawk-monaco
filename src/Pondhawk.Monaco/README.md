@@ -90,7 +90,23 @@ validation against it:
 
 Both formats are driven from the same schema text, so one contract covers a document authored either way.
 
-Use `SchemaFileMatch` to narrow which documents it applies to; the default is all of them.
+### Each editor gets its own schema
+
+Two editors on one page can carry different schemas. Monaco's schema configuration is page-global — one
+call replaces the lot — so the component keeps every live editor's schema and re-applies the whole set
+together, scoping each to its own document.
+
+`SchemaFileMatch` overrides that scope. Pass `["*"]` when several editors should share one contract:
+
+```razor
+<CodeEditor @bind-Value="a" Language="yaml" Schema="@shared" SchemaFileMatch='["*"]' />
+<CodeEditor @bind-Value="b" Language="json" Schema="@shared" SchemaFileMatch='["*"]' />
+```
+
+A schema is retracted when its editor is disposed, so a closed tab stops validating anything.
+
+Note that `DiffEditor` documents are not covered by a `CodeEditor`'s schema — it has no `Schema`
+parameter, and schemas now scope to the editor that supplied them.
 
 ### Gotcha: a `$schema` modeline overrides this
 

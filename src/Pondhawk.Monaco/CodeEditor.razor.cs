@@ -27,9 +27,20 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     private DotNetObjectReference<CodeEditor>? _self;
 
     private bool _created;
+
+    /// <summary>
+    /// Set the moment creation is ISSUED, where <see cref="_created"/> is set once it has completed.
+    /// Disposal keys off this one: between the create call and the attach call that follows it there is
+    /// an await — a network round trip under Blazor Server — and a component disposed inside that window
+    /// would otherwise never tell JavaScript to tear the editor down, leaking the Monaco instance, its
+    /// model and its DOM for the life of the page.
+    /// </summary>
+    private bool _createIssued;
+
     private string _lastValueFromEditor = string.Empty;
     private string? _appliedLanguage;
     private string? _appliedSchema;
+    private IReadOnlyList<string>? _appliedSchemaFileMatch;
     private string? _appliedTheme;
     private LiveEditorOptions? _appliedOptions;
     private IReadOnlyList<EditorMarker>? _appliedDiagnostics;
@@ -53,7 +64,13 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     /// </summary>
     [Parameter] public string? Schema { get; set; }
 
-    /// <summary>Which documents the schema applies to. Defaults to all of them.</summary>
+    /// <summary>
+    /// Which documents the schema applies to. Defaults to <b>this editor's own document</b>, so two
+    /// editors on one page can carry different schemas without colliding.
+    ///
+    /// <para>Supply a value to widen that — <c>["*"]</c> applies the schema to every document on the
+    /// page, which is what you want when several editors share one contract.</para>
+    /// </summary>
     [Parameter] public IReadOnlyList<string>? SchemaFileMatch { get; set; }
 
     /// <summary>Host-supplied diagnostics, shown alongside the language service's own.</summary>
@@ -108,6 +125,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
             _appliedTheme = Theme;
             _appliedOptions = CurrentOptions();
 
+            _createIssued = true;
             await _interop.CreateAsync(_id, _host, new EditorOptions
             {
                 BaseUrl = baseUrl,
@@ -177,12 +195,24 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
         RawOptions = EditorOptions,
     };
 
+    /// <summary>
+    /// Re-applies when EITHER the schema text or the documents it applies to change. Comparing only the
+    /// text meant a caller could narrow or widen <see cref="SchemaFileMatch"/> and have nothing happen —
+    /// a parameter that looks live but is read once.
+    /// </summary>
     private async Task ApplySchemaAsync()
     {
-        if (_interop is null || Schema is null || Schema == _appliedSchema) return;
+        if (_interop is null || Schema is null) return;
+
+        var fileMatchChanged = !(_appliedSchemaFileMatch is null
+            ? SchemaFileMatch is null
+            : SchemaFileMatch is not null && _appliedSchemaFileMatch.SequenceEqual(SchemaFileMatch));
+
+        if (Schema == _appliedSchema && !fileMatchChanged) return;
 
         _appliedSchema = Schema;
-        await _interop.ConfigureSchemaAsync(Schema, SchemaFileMatch);
+        _appliedSchemaFileMatch = SchemaFileMatch is null ? null : [.. SchemaFileMatch];
+        await _interop.ConfigureSchemaAsync(_id, Schema, SchemaFileMatch);
     }
 
     /// <summary>
@@ -327,7 +357,10 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     {
         try
         {
-            if (_created && _interop is not null)
+            // _createIssued, not _created: see the field. dispose(id) no-ops on an id JavaScript never
+            // registered, so calling it when creation had not finished is safe and calling it when
+            // creation HAD finished is the whole point.
+            if (_createIssued && _interop is not null)
                 await _interop.DisposeEditorAsync(_id);
         }
         catch (JSDisconnectedException)

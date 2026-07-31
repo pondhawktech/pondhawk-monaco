@@ -391,7 +391,7 @@ describe('schema', () => {
     const { mod, monaco } = await editorFixture();
     monaco.reset();
 
-    mod.configureSchema('{"type":"object"}', null);
+    mod.configureSchema('e1', '{"type":"object"}', null);
 
     const json = onlyCall(monaco, 'json.setDiagnosticsOptions').args[0];
     const yaml = onlyCall(monaco, 'configureMonacoYaml').args[0];
@@ -399,16 +399,68 @@ describe('schema', () => {
     assert.deepEqual(json.schemas[0].schema, { type: 'object' });
     assert.deepEqual(yaml.schemas[0].schema, { type: 'object' });
     assert.equal(json.schemas[0].uri, yaml.schemas[0].uri, 'the same contract in both formats');
-    assert.deepEqual(json.schemas[0].fileMatch, ['*'], 'no fileMatch means every document');
     assert.equal(json.enableSchemaRequest, false, 'no network fetches for schemas');
+  });
+
+  test('a schema defaults to its own editor, not to every document', async () => {
+    const { mod, monaco } = await editorFixture();
+    monaco.reset();
+
+    mod.configureSchema('e1', '{"type":"object"}', null);
+
+    const [entry] = onlyCall(monaco, 'json.setDiagnosticsOptions').args[0].schemas;
+    assert.deepEqual(entry.fileMatch, ['inmemory://pondhawk/e1.yaml'],
+      "the old default of ['*'] made every schema claim every document");
+  });
+
+  // The defect: Monaco's schema configuration is page-global, so configuring one editor used to
+  // replace the other's. Both must survive, each scoped to its own document.
+  test('two editors keep their own schemas', async () => {
+    const { mod, monaco } = await editorFixture();
+    mod.create('e2', makeHost(), {
+      baseUrl: 'https://app.example/d', value: '', language: 'json', tabSize: 2,
+    });
+    monaco.reset();
+
+    mod.configureSchema('e1', '{"title":"first"}', null);
+    mod.configureSchema('e2', '{"title":"second"}', null);
+
+    const { schemas } = calls(monaco, 'json.setDiagnosticsOptions').at(-1).args[0];
+    assert.equal(schemas.length, 2, 'the second schema must not replace the first');
+
+    const byTitle = Object.fromEntries(schemas.map(s => [s.schema.title, s]));
+    assert.deepEqual(byTitle.first.fileMatch, ['inmemory://pondhawk/e1.yaml']);
+    assert.deepEqual(byTitle.second.fileMatch, ['inmemory://pondhawk/e2.json']);
+    assert.notEqual(byTitle.first.uri, byTitle.second.uri, 'distinct keys, or they collapse into one');
+  });
+
+  test('an explicit fileMatch still widens the scope', async () => {
+    const { mod, monaco } = await editorFixture();
+    monaco.reset();
+
+    mod.configureSchema('e1', '{"type":"object"}', ['*']);
+
+    const [entry] = onlyCall(monaco, 'json.setDiagnosticsOptions').args[0].schemas;
+    assert.deepEqual(entry.fileMatch, ['*'], 'a caller sharing one contract across editors');
+  });
+
+  test('disposing an editor retracts its schema', async () => {
+    const { mod, monaco } = await editorFixture();
+    mod.configureSchema('e1', '{"type":"object"}', null);
+    monaco.reset();
+
+    mod.dispose('e1');
+
+    const { schemas } = calls(monaco, 'json.setDiagnosticsOptions').at(-1).args[0];
+    assert.equal(schemas.length, 0, 'a dead editor must stop claiming documents');
   });
 
   test('reconfiguring disposes the previous yaml registration', async () => {
     const { mod, monaco } = await editorFixture();
-    mod.configureSchema('{"type":"object"}', ['*.yaml']);
+    mod.configureSchema('e1', '{"type":"object"}', ['*.yaml']);
     monaco.reset();
 
-    mod.configureSchema('{"type":"array"}', ['*.yaml']);
+    mod.configureSchema('e1', '{"type":"array"}', ['*.yaml']);
 
     assert.equal(calls(monaco, 'yaml.dispose').length, 1, 'or the old service is left registered');
   });
