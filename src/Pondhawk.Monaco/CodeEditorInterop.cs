@@ -13,7 +13,7 @@ namespace Pondhawk.Monaco;
 internal sealed class CodeEditorInterop(IJSRuntime js, string baseUrl) : IAsyncDisposable
 {
     private readonly Lazy<Task<IJSObjectReference>> _module = new(() =>
-        js.InvokeAsync<IJSObjectReference>("import", $"{baseUrl}/code-editor.js").AsTask());
+        js.InvokeAsync<IJSObjectReference>("import", $"{baseUrl}/code-editor.js{AssetVersion.Query}").AsTask());
 
     private Task<IJSObjectReference> Module => _module.Value;
 
@@ -148,6 +148,10 @@ file static class TaskExtensions
 internal sealed record EditorOptions
 {
     public required string BaseUrl { get; init; }
+
+    /// <summary>Appended to the stylesheet and worker URLs by the JS module. See <see cref="Monaco.AssetVersion"/>.</summary>
+    public string AssetVersion { get; init; } = Monaco.AssetVersion.Value;
+
     public required string Value { get; init; }
     public required string Language { get; init; }
     public string Theme { get; init; } = "vs";
@@ -166,6 +170,10 @@ internal sealed record EditorOptions
 internal sealed record DiffOptions
 {
     public required string BaseUrl { get; init; }
+
+    /// <summary>Appended to the stylesheet and worker URLs by the JS module. See <see cref="Monaco.AssetVersion"/>.</summary>
+    public string AssetVersion { get; init; } = Monaco.AssetVersion.Value;
+
     public required string Original { get; init; }
     public required string Modified { get; init; }
     public required string Language { get; init; }

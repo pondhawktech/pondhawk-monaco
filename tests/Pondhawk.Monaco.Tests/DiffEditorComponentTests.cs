@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,8 +20,14 @@ public class DiffEditorComponentTests
     // Matches Blazor's JS interop serializer configuration.
     private static readonly JsonSerializerOptions InteropJson = new(JsonSerializerDefaults.Web);
 
-    private const string ModulePath =
-        "http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js";
+    // Versioned, so a browser holding an older release's module cannot keep running it after an upgrade.
+    // Composed here from the assembly, not from the component's own helper, so the test says what the URL
+    // must be rather than repeating how it is built.
+    private static readonly string AssemblyVersion =
+        typeof(CodeEditor).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+
+    private static readonly string ModulePath =
+        $"http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js?v={Uri.EscapeDataString(AssemblyVersion)}";
 
     private static (BunitContext Ctx, BunitJSModuleInterop Module) Arrange()
     {
@@ -175,6 +182,7 @@ public class DiffEditorComponentTests
     /// so the symptom is an option that quietly does nothing rather than an error.
     /// </summary>
     [TestCase("baseUrl")]
+    [TestCase("assetVersion")]
     [TestCase("original")]
     [TestCase("modified")]
     [TestCase("language")]

@@ -60,14 +60,23 @@ let yamlConfigured = null;
 const schemas = new Map();
 
 /**
+ * The query that pins an asset URL to the release that shipped it. The paths never change between
+ * releases, so without it a browser holding the previous release's stylesheet or workers keeps using them
+ * after an upgrade. .NET versions the module import itself the same way.
+ */
+function versionQuery(assetVersion) {
+  return assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : '';
+}
+
+/**
  * Point Monaco's worker loader at our own assets. The base path is supplied by .NET rather than guessed:
  * it differs between hosting models and base-href configurations, and a wrong guess fails only at the
  * moment the language service is first needed — long after startup, where it is hard to diagnose.
  */
-function configureWorkers(baseUrl) {
+function configureWorkers(baseUrl, assetVersion) {
   if (workersReady) return;
 
-  const url = name => `${baseUrl.replace(/\/$/, '')}/${name}.worker.js`;
+  const url = name => `${baseUrl.replace(/\/$/, '')}/${name}.worker.js${versionQuery(assetVersion)}`;
 
   // Monaco dispatches by language LABEL, and several languages share one worker. A label routed to the
   // wrong worker does not throw — it silently produces no completions or diagnostics for that language,
@@ -190,8 +199,8 @@ const yamlMonaco = {
  * so without this every consumer would have to remember a <link> in index.html — and the failure mode
  * (an unstyled, unusable editor) gives no hint as to why.
  */
-function ensureStyles(baseUrl) {
-  const href = `${baseUrl.replace(/\/$/, '')}/code-editor.css`;
+function ensureStyles(baseUrl, assetVersion) {
+  const href = `${baseUrl.replace(/\/$/, '')}/code-editor.css${versionQuery(assetVersion)}`;
 
   // A DIFFERENT attribute from the data-pondhawk-editor stamp on the host element. They used to share
   // one name, and since this link lives in <head> it sorted first — so querySelector('[data-pondhawk-
@@ -207,8 +216,8 @@ function ensureStyles(baseUrl) {
 }
 
 export function create(id, host, options) {
-  ensureStyles(options.baseUrl);
-  configureWorkers(options.baseUrl);
+  ensureStyles(options.baseUrl, options.assetVersion);
+  configureWorkers(options.baseUrl, options.assetVersion);
   dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
 
   checkLanguage(options.language);
@@ -541,8 +550,8 @@ export function dispose(id) {
 // ---------------------------------------------------------------------------------------------------
 
 export function createDiff(id, host, options) {
-  ensureStyles(options.baseUrl);
-  configureWorkers(options.baseUrl);
+  ensureStyles(options.baseUrl, options.assetVersion);
+  configureWorkers(options.baseUrl, options.assetVersion);
   disposeDiff(id); // defensive, matching create()
 
   checkLanguage(options.language);

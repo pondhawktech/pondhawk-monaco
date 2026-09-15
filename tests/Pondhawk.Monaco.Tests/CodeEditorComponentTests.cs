@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,8 +20,14 @@ public class CodeEditorComponentTests
     // ABSOLUTE, because the component composes the path from NavigationManager.BaseUri rather than
     // using a relative one — bUnit's fake base is http://localhost/. That this must be absolute is the
     // point: a relative path would resolve against the document URL and break under a non-root base href.
-    private const string ModulePath =
-        "http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js";
+    // Versioned, so a browser holding an older release's module cannot keep running it after an upgrade.
+    // Composed here from the assembly, not from the component's own helper, so the test says what the URL
+    // must be rather than repeating how it is built.
+    private static readonly string AssemblyVersion =
+        typeof(CodeEditor).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+
+    private static readonly string ModulePath =
+        $"http://localhost/_content/Pondhawk.Monaco/dist/code-editor.js?v={Uri.EscapeDataString(AssemblyVersion)}";
 
     // Matches Blazor's JS interop serializer configuration.
     private static readonly JsonSerializerOptions InteropJson = new(JsonSerializerDefaults.Web);
@@ -82,6 +89,22 @@ public class CodeEditorComponentTests
         baseUrl.ShouldNotBeNull();
         Uri.IsWellFormedUriString(baseUrl, UriKind.Absolute).ShouldBeTrue();
         baseUrl.ShouldEndWith("_content/Pondhawk.Monaco/dist");
+    }
+
+    [Test]
+    public void Passes_the_release_version_for_the_stylesheet_and_workers()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+
+        ctx.Render<CodeEditor>();
+
+        // code-editor.js appends it to code-editor.css and every worker URL; missing on the wire, it would
+        // arrive as undefined and those assets would be requested unversioned, cached across upgrades.
+        var options = module.Invocations["create"].Single().Arguments[2]!;
+        var json = JsonSerializer.SerializeToElement(options, InteropJson);
+
+        json.GetProperty("assetVersion").GetString().ShouldBe(AssemblyVersion);
     }
 
     /// <summary>

@@ -36,6 +36,16 @@ describe('worker routing', () => {
     assert.ok(monaco);
   });
 
+  // The worker paths never change between releases, so without the version a browser holding the
+  // previous release's worker keeps running it after an upgrade.
+  test('worker URLs carry the release they belong to', async () => {
+    await editorFixture({ assetVersion: '1.0.3+abc123' });
+    const url = label => globalThis.self.MonacoEnvironment.getWorker('', label).url;
+
+    assert.equal(url('json'), 'https://app.example/_content/Pondhawk.Monaco/dist/json.worker.js?v=1.0.3%2Babc123');
+    assert.match(url('anything-else'), /editor\.worker\.js\?v=1\.0\.3%2Babc123$/);
+  });
+
   test('an unrouted label falls back to the plain editor worker', async () => {
     await editorFixture();
     const url = label => globalThis.self.MonacoEnvironment.getWorker('', label).url;
@@ -638,6 +648,22 @@ describe('stylesheet injection', () => {
 
     assert.equal(globalThis.document.__head.children.length, linksAfterFirst);
     assert.equal(linksAfterFirst, 1);
+  });
+
+  test('the stylesheet URL carries the release it belongs to', async () => {
+    globalThis.document.__head.children.length = 0;
+    await editorFixture({ assetVersion: '1.0.3+abc123' });
+    const [link] = globalThis.document.__head.children;
+
+    assert.equal(link.href, 'https://app.example/_content/Pondhawk.Monaco/dist/code-editor.css?v=1.0.3%2Babc123');
+  });
+
+  test('without a version the URLs are left as they were', async () => {
+    globalThis.document.__head.children.length = 0;
+    await editorFixture();
+    const [link] = globalThis.document.__head.children;
+
+    assert.equal(link.href, 'https://app.example/_content/Pondhawk.Monaco/dist/code-editor.css');
   });
 
   test('the marker attribute does not collide with the host stamp', async () => {
