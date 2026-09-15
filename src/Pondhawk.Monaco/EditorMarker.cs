@@ -26,13 +26,22 @@ public enum MarkerSeverity
 /// </summary>
 public sealed record EditorMarker
 {
+    /// <summary>1-based line the underline starts on.</summary>
     public required int StartLine { get; init; }
+
+    /// <summary>1-based column the underline starts at.</summary>
     public required int StartColumn { get; init; }
+
+    /// <summary>1-based line the underline ends on.</summary>
     public required int EndLine { get; init; }
+
+    /// <summary>1-based column the underline ends at, exclusive.</summary>
     public required int EndColumn { get; init; }
 
+    /// <summary>What is wrong, shown when the pointer rests on the underline.</summary>
     public required string Message { get; init; }
 
+    /// <summary>The squiggle's colour and weight. Defaults to <see cref="MarkerSeverity.Error"/>.</summary>
     public MarkerSeverity Severity { get; init; } = MarkerSeverity.Error;
 
     /// <summary>Shown in the hover next to the message — typically a rule id or tool name.</summary>
