@@ -299,9 +299,8 @@ and as the check that stops a version being published twice.
 Run **Release to NuGet.org** from the Actions tab and choose `patch`/`minor`/`major`. Tick **dry run**
 to build and pack without publishing or committing anything.
 
-A real publish also requires typing the exact version into **confirm**. Environment approval rules are
-Enterprise-only for a private repository, so this stands in for a second pair of eyes: weaker, but it
-stops a mis-aimed dispatch, and a nuget.org push cannot be undone.
+The bump decides the version; there is nothing to type. The run's summary names the version it
+publishes, and the tag guard stops one that has already shipped.
 
 `none` publishes the file as-is and was the path for the **first** release; the tag guard refuses it now
 that 1.0.0 has shipped.

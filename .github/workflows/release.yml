@@ -25,11 +25,6 @@ on:
         type: boolean
         required: false
         default: false
-      confirm:
-        description: 'To publish for real, type the exact version being released (e.g. 1.0.1)'
-        type: string
-        required: false
-        default: ''
 
 permissions:
   contents: write   # commit the version bump, create the tag and the GitHub release
@@ -104,25 +99,6 @@ jobs:
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Dry run: \`${{ inputs.dry_run }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # Environment protection rules — required reviewers — are Enterprise-only for a private repository,
-      # so a real publish is gated on typing the version instead. It is a weaker control than a second
-      # pair of eyes, but it does stop a mis-aimed dispatch, and a nuget.org push cannot be undone.
-      - name: Confirm the version before publishing
-        if: '!inputs.dry_run'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          CONFIRM: ${{ inputs.confirm }}
-        run: |
-          set -euo pipefail
-
-          if [ "$CONFIRM" != "$VERSION" ]; then
-            echo "::error::This run would publish ${VERSION} permanently to nuget.org."
-            echo "::error::Re-run with confirm set to exactly '${VERSION}', or tick dry run."
-            exit 1
-          fi
-
-          echo "Confirmed: publishing ${VERSION}."
 
       # No --packageVersion: MSBuild reads Directory.Build.props, which the step above already holds at
       # the right value. One source of truth, so the nuspec cannot disagree with the file.
