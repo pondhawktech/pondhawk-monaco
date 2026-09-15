@@ -402,6 +402,35 @@ describe('schema', () => {
     assert.equal(json.enableSchemaRequest, false, 'no network fetches for schemas');
   });
 
+  test('a JSON document that breaks its schema is an error, not a warning', async () => {
+    const { mod, monaco } = await editorFixture();
+    monaco.reset();
+
+    mod.configureSchema('e1', '{"type":"object"}', null);
+
+    const json = onlyCall(monaco, 'json.setDiagnosticsOptions').args[0];
+    assert.equal(json.schemaValidation, 'error', "Monaco's default draws a yellow squiggle");
+  });
+
+  // monaco-yaml has no severity setting, so the Monaco it is handed raises its warnings instead.
+  test('a YAML document that breaks its schema is an error, not a warning', async () => {
+    const { mod, monaco } = await editorFixture();
+    monaco.reset();
+
+    mod.configureSchema('e1', '{"type":"object"}', null);
+    const yamlMonaco = onlyCall(monaco, 'configureMonacoYaml').args[1];
+    monaco.reset();
+
+    const { Warning, Error, Info } = monaco.MarkerSeverity;
+    yamlMonaco.editor.setModelMarkers('model', 'yaml',
+      [{ message: 'Incorrect type', severity: Warning }, { message: 'bad indent', severity: Error }, { message: 'fyi', severity: Info }]);
+
+    const [owner, markers] = onlyCall(monaco, 'editor.setModelMarkers').args;
+    assert.equal(owner, 'yaml');
+    assert.deepEqual(markers.map(m => m.severity), [Error, Error, Info], 'warnings raised; nothing else changed');
+    assert.notEqual(yamlMonaco.editor, monaco.editor, "the global Monaco's markers are left alone");
+  });
+
   test('a schema defaults to its own editor, not to every document', async () => {
     const { mod, monaco } = await editorFixture();
     monaco.reset();

@@ -146,11 +146,15 @@ function applySchemas() {
   monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
     validate: true,
     enableSchemaRequest: false,
+    // A document that breaks its schema is wrong, not questionable. Monaco's default is 'warning',
+    // which drew a yellow squiggle under a string where the schema says integer -- beside the red
+    // one a stray comma gets -- and read as advice a caller was free to ignore.
+    schemaValidation: 'error',
     schemas: all,
   });
 
   yamlConfigured?.dispose();
-  yamlConfigured = configureMonacoYaml(monaco, {
+  yamlConfigured = configureMonacoYaml(yamlMonaco, {
     enableSchemaRequest: false,
     validate: true,
     format: true,
@@ -159,6 +163,27 @@ function applySchemas() {
     schemas: all,
   });
 }
+
+/**
+ * Monaco as monaco-yaml sees it: the same in every respect except that the markers it sets are raised
+ * from warning to error.
+ *
+ * The YAML language server reports a document that breaks its schema as a warning, and unlike Monaco's
+ * JSON service (see schemaValidation above) monaco-yaml offers no setting for it. Its syntax errors are
+ * already errors, and its warnings are its schema's, so raising them makes a schema problem the same red
+ * squiggle in both formats. monaco-yaml sets markers through the Monaco it is handed, so the change is
+ * confined to its own -- the global Monaco, and every other language's markers, are untouched.
+ */
+const yamlMonaco = {
+  ...monaco,
+  editor: {
+    ...monaco.editor,
+    setModelMarkers(model, owner, markers) {
+      monaco.editor.setModelMarkers(model, owner, markers.map(m =>
+        m.severity === monaco.MarkerSeverity.Warning ? { ...m, severity: monaco.MarkerSeverity.Error } : m));
+    },
+  },
+};
 
 /**
  * Inject Monaco's stylesheet ourselves. esbuild extracts it from the ESM imports into a separate file,

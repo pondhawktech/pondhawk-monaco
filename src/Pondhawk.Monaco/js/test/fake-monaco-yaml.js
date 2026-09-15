@@ -3,6 +3,6 @@
 import { log } from './fake-monaco.js';
 
 export function configureMonacoYaml(_monaco, options) {
-  log.push({ name: 'configureMonacoYaml', args: [options] });
+  log.push({ name: 'configureMonacoYaml', args: [options, _monaco] });
   return { dispose: () => log.push({ name: 'yaml.dispose', args: [] }) };
 }

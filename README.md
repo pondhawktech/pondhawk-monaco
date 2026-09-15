@@ -54,6 +54,11 @@ This is the capability that motivated the project. Monaco's built-in JSON servic
 `monaco-yaml` handles `yaml`. Both are driven from the same schema text, so a document can be edited in
 either format against one contract.
 
+A document that breaks its schema is underlined as an **error** — the same red as a syntax error, in
+both formats. Monaco's JSON service and `monaco-yaml` both default to a yellow warning, which reads as
+advice; JSON is configured to report it as an error, and `monaco-yaml`, which has no such setting, has
+its warnings raised to errors.
+
 ### Gotcha: the `$schema` modeline wins
 
 A YAML document whose first line carries a language-server modeline —
