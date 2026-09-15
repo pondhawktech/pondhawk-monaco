@@ -25,16 +25,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
       # Node is needed ONLY here and only to bundle Monaco into wwwroot/dist. Consumers of the published
       # package never need it. The cache is the npm download cache, keyed on the lockfile; node_modules
       # itself is absent on a fresh runner, so the csproj's `npm ci` runs every time regardless.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -61,7 +61,7 @@ jobs:
         run: ./build.sh --target Pack --packageVersion=${{ steps.version.outputs.version }}
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nupkg-${{ steps.version.outputs.version }}
           path: artifacts/*.nupkg

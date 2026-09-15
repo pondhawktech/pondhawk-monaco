@@ -55,13 +55,13 @@ jobs:
           echo "::error::Release must run on main; this run targeted ${GITHUB_REF}."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -174,7 +174,7 @@ jobs:
           ./build.sh --target VerifyBundle --against="$ci_pkg"
 
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nupkg-${{ steps.version.outputs.version }}
           path: artifacts/*.nupkg
