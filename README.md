@@ -7,9 +7,10 @@ consuming apps need **no JavaScript toolchain at all**.
 <CodeEditor @bind-Value="source" Language="csharp" />
 ```
 
-Eight languages are bundled. **YAML, JSON, HTML and CSS** carry a full language service — completion,
+Nine languages are bundled. **YAML, JSON, HTML and CSS** carry a full language service — completion,
 diagnostics, hover — and **XML, Markdown, SQL and C#** carry syntax highlighting, which is all Monaco
-offers for those in any case. Anything else falls back to plain text with a console warning.
+offers for those in any case. **`stacktrace`** is this package's own grammar for exception traces (.NET
+and Node), which Monaco has none for. Anything else falls back to plain text with a console warning.
 
 **Optional JSON-Schema intelligence** for YAML and JSON, when a schema is supplied:
 
@@ -153,7 +154,8 @@ barrel, which would pull in ~80 highlighting grammars and every language service
 
 Almost all of that is `ts.worker.js`, 5.7 MB uncompressed because it contains the TypeScript compiler,
 for a service most consumers of a config editor never open. The main module barely moves — 95% of it is
-the editor core, and all eight languages together are ~190 KB.
+the editor core, and all eight languages together are ~190 KB. The `stacktrace` grammar, added since, is
+another 1.5 KB.
 
 **The contributions are not symmetric, and this is the trap when adding a language.** JSON's service
 contribution calls `languages.register()` itself and stands alone. CSS's and HTML's do not — they only

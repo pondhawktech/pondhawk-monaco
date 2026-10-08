@@ -44,8 +44,8 @@ or give it a class and size that from your own CSS:
 
 ## Languages
 
-Eight languages are bundled. Four carry a full language service — completion, diagnostics and hover —
-and four are syntax highlighting, which is all Monaco offers for them in any case:
+Nine languages are bundled. Four carry a full language service — completion, diagnostics and hover —
+and five are syntax highlighting, which is all Monaco offers for them in any case:
 
 | `Language` | | |
 |---|---|---|
@@ -57,16 +57,24 @@ and four are syntax highlighting, which is all Monaco offers for them in any cas
 | `markdown` | highlighting | |
 | `sql` | highlighting | |
 | `csharp` | highlighting | |
+| `stacktrace` | highlighting | exception traces — ours, not Monaco's; see below |
 
 Pass the Monaco language id to `Language`. It can change at runtime; the document survives the switch.
 
 The set is deliberately narrow. Monaco ships ~80 highlighting grammars and a TypeScript service whose
 worker alone is 5.7 MB, and carrying all of it made the package 3.3 MB for capability most applications
-never touch. Trimming to these eight took it to 1.9 MB.
+never touch. Trimming to these took it to 1.9 MB.
 
 **An unbundled language falls back to plain text** and logs a console warning naming what *is* bundled —
 Monaco's own behaviour is to fall back in silence, which reads as a broken editor rather than an absent
 language. If you need one that is not here, open an issue; adding a highlighting grammar costs ~10 KB.
+
+**`stacktrace`** is this package's own grammar — Monaco has none. It colours .NET's `Exception.ToString()`
+(the exception and its message, inner exceptions, each frame's method, file and line) and Node's
+`error.stack`, and dims framework and library frames (`System.*`, `Microsoft.*`, `node:internal`,
+`node_modules`) so the application's own frames stand out. A `--- Context ---` section, as Pondhawk.Logging
+writes ahead of an exception, is highlighted as JSON. Only lines shaped like a trace are coloured, so it is
+safe for text that may or may not be one. It uses tokens the built-in `vs` and `vs-dark` themes colour.
 
 Note that `scss`, `less`, `handlebars` and `razor` are **not** included, even though their services would
 otherwise ride along with `css` and `html` — the grammars that register those ids are not bundled.
@@ -333,7 +341,7 @@ Monaco is a large editor. Most of what ships here is not a first-load cost:
   Put the editor behind a lazily-loaded page and it costs nothing until someone opens it.
 
 Roughly 95% of that main module is Monaco's editor core — rendering, find, folding, the suggest widget.
-The eight bundled languages account for about 190 KB of it between them.
+Monaco's eight bundled languages account for about 190 KB of it between them, and `stacktrace` for 1.5 KB.
 
 ## Hosting models
 
