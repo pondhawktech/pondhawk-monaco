@@ -55,7 +55,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
     /// <summary>Raised after the debounce elapses, carrying the editor's current text.</summary>
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
-    /// <summary>Monaco language id — <c>csharp</c>, <c>yaml</c>, <c>json</c>, <c>sql</c>, <c>markdown</c>…</summary>
+    /// <summary>Monaco language id — <c>csharp</c>, <c>yaml</c>, <c>json</c>, <c>sql</c>, <c>markdown</c>, <c>stacktrace</c>…</summary>
     [Parameter] public string Language { get; set; } = "plaintext";
 
     /// <summary>

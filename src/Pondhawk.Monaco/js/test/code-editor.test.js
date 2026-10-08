@@ -282,6 +282,22 @@ describe('unbundled languages', () => {
     assert.equal(warnings.length, 1, 'warned once per id, not once per call');
   });
 
+  test('stacktrace is registered with its grammar, and silent', async () => {
+    const { monaco } = await editorFixture({ language: 'stacktrace' });
+    assert.ok(monaco.languages.__grammars.stacktrace?.tokenizer, 'the grammar reached Monaco');
+    assert.equal(warnings.length, 0);
+  });
+
+  test("opening a stack trace loads JSON's highlighting, for its context", async () => {
+    const { monaco } = await editorFixture({ language: 'stacktrace' });
+    monaco.languages.__onLanguage.stacktrace();
+    assert.ok(!calls(monaco, 'editor.createModel').some(c => c.args[1] === 'json'), 'not while the trace is being created');
+    await new Promise(resolve => setTimeout(resolve));
+
+    assert.ok(calls(monaco, 'editor.createModel').some(c => c.args[1] === 'json'), 'a JSON document opened');
+    assert.ok(calls(monaco, 'model.dispose').some(c => c.args[0] === 'json'), 'and the stand-in document is not kept');
+  });
+
   test('a bundled language is silent', async () => {
     await editorFixture({ language: 'yaml' });
     assert.equal(warnings.length, 0);

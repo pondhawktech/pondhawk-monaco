@@ -42,6 +42,10 @@ import 'monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution';
 
 import { configureMonacoYaml } from 'monaco-yaml';
 
+// Highlighting Monaco does not ship: our own grammars, registered when the module loads.
+import { register as registerStackTrace } from './stacktrace.js';
+registerStackTrace(monaco);
+
 /** id -> { editor, model, dotNet, revision, changeTimer, subscriptions } */
 const editors = new Map();
 

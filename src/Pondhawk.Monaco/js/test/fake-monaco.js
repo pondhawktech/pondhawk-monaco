@@ -145,7 +145,14 @@ export const editor = {
 
 export const languages = {
   __registered: [],
-  getLanguages: () => languages.__registered.map(id => ({ id })),
+  // What the module registers itself, at load — before a test's reset(), so kept apart from __registered.
+  __own: [],
+  __grammars: {},
+  register: ({ id }) => languages.__own.push(id),
+  setMonarchTokensProvider: (id, grammar) => { languages.__grammars[id] = grammar; },
+  __onLanguage: {},
+  onLanguage: (id, callback) => { languages.__onLanguage[id] = callback; },
+  getLanguages: () => [...languages.__registered, ...languages.__own].map(id => ({ id })),
   json: {
     jsonDefaults: {
       setDiagnosticsOptions: (o) => record('json.setDiagnosticsOptions', o),

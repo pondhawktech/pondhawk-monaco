@@ -280,6 +280,20 @@
                 public string Url(string host) => $"{Protocol}://{host}:{Port}";
             }
             """),
+        new("stacktrace", "Stack trace (highlighting only)", """
+            --- Context -----------------------------------------
+            { "orderId": 42, "customer": "c-1009" }
+            --- Exception ---------------------------------------
+            System.InvalidOperationException: Order 42 was not found.
+             ---> System.Collections.Generic.KeyNotFoundException: The given key '42' was not present in the dictionary.
+               at System.Collections.Generic.Dictionary`2.get_Item(TKey key)
+               at Shop.Orders.OrderService.Find(Int32 id) in /src/Shop/Orders/OrderService.cs:line 37
+               --- End of inner exception stack trace ---
+               at Shop.Orders.OrderService.Find(Int32 id) in /src/Shop/Orders/OrderService.cs:line 41
+               at Shop.Api.OrdersEndpoint.<>c__DisplayClass0_0.<<Map>b__0>d.MoveNext() in /src/Shop/Api/OrdersEndpoint.cs:line 18
+            --- End of stack trace from previous location ---
+               at Microsoft.AspNetCore.Http.RequestDelegateFactory.ExecuteTaskResult[T](Task`1 task, HttpContext httpContext)
+            """),
         new("sql", "SQL (highlighting only)", """
             SELECT s.name, e.protocol, count(*) AS calls
             FROM services s
