@@ -19,8 +19,9 @@ internal sealed class CodeEditorInterop(IJSRuntime js, string baseUrl) : IAsyncD
 
     public string BaseUrl { get; } = baseUrl;
 
-    public async Task CreateAsync(string id, ElementReference host, EditorOptions options) =>
-        await (await Module).InvokeVoidAsync("create", id, host, options);
+    /// <summary>Creates the editor; false when its host had already left the page, and nothing was created.</summary>
+    public async Task<bool> CreateAsync(string id, ElementReference host, EditorOptions options) =>
+        await (await Module).InvokeAsync<bool>("create", id, host, options);
 
     public async Task AttachAsync<T>(string id, DotNetObjectReference<T> reference) where T : class =>
         await (await Module).InvokeVoidAsync("attach", id, reference);
@@ -90,8 +91,9 @@ internal sealed class CodeEditorInterop(IJSRuntime js, string baseUrl) : IAsyncD
 
     // --- Diff editor -------------------------------------------------------------------------------
 
-    public async Task CreateDiffAsync(string id, ElementReference host, DiffOptions options) =>
-        await (await Module).InvokeVoidAsync("createDiff", id, host, options);
+    /// <summary>Creates the diff editor; false when its host had already left the page, and nothing was created.</summary>
+    public async Task<bool> CreateDiffAsync(string id, ElementReference host, DiffOptions options) =>
+        await (await Module).InvokeAsync<bool>("createDiff", id, host, options);
 
     public async Task AttachDiffAsync<T>(string id, DotNetObjectReference<T> reference) where T : class =>
         await (await Module).InvokeVoidAsync("attachDiff", id, reference);

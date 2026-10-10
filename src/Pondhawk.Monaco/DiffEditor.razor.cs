@@ -120,7 +120,7 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
             _appliedView = CurrentView();
 
             _createIssued = true;
-            await _interop.CreateDiffAsync(_id, _host, new DiffOptions
+            var created = await _interop.CreateDiffAsync(_id, _host, new DiffOptions
             {
                 BaseUrl = baseUrl,
                 Original = Original,
@@ -138,6 +138,8 @@ public sealed partial class DiffEditor : ComponentBase, IAsyncDisposable
                 DebounceMs = DebounceMs,
                 RawOptions = EditorOptions,
             });
+
+            if (!created) return;   // its host had already left the page — see CodeEditor
 
             await _interop.AttachDiffAsync(_id, _self);
             _created = true;

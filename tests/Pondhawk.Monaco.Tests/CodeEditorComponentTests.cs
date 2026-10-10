@@ -40,6 +40,7 @@ public class CodeEditorComponentTests
         // The component builds its module path from NavigationManager.BaseUri; bUnit's fake base is "/".
         var module = ctx.JSInterop.SetupModule(ModulePath);
         module.Mode = JSRuntimeMode.Loose;   // every export resolves; we assert on specific invocations
+        module.Setup<bool>("create", _ => true).SetResult(true);   // created: its host is on the page
         return (ctx, module);
     }
 
@@ -444,4 +445,43 @@ public class CodeEditorComponentTests
         module.VerifyInvoke("dispose");
         ctx.Dispose();
     }
+
+    // ── A host already off the page ──
+    //
+    // The component was removed between rendering its host and creating the editor — a list moved on
+    // quickly, a tab closed. JavaScript creates nothing and says so; the component must stay uncreated,
+    // throw nothing, and still dispose cleanly.
+
+    private static (BunitContext Ctx, BunitJSModuleInterop Module) ArrangeDetached()
+    {
+        var (ctx, module) = Arrange();
+        module.Setup<bool>("create", _ => true).SetResult(false);   // the host had left the page
+        return (ctx, module);
+    }
+
+    [Test]
+    public void A_host_off_the_page_is_never_attached_or_written_to()
+    {
+        var (ctx, module) = ArrangeDetached();
+        using var _ctx = ctx;
+
+        var cut = ctx.Render<CodeEditor>(p => p.Add(c => c.Value, "start"));
+        cut.Render(p => p.Add(c => c.Value, "changed"));
+
+        module.VerifyInvoke("create");
+        module.Invocations.Identifiers.ShouldNotContain("attach");
+        module.Invocations.Identifiers.ShouldNotContain("setValue", "an editor that was never made is not written to");
+    }
+
+    [Test]
+    public async Task A_host_off_the_page_still_disposes_cleanly()
+    {
+        var (ctx, module) = ArrangeDetached();
+        var cut = ctx.Render<CodeEditor>();
+
+        await Should.NotThrowAsync(async () => await cut.Instance.DisposeAsync());
+        module.VerifyInvoke("dispose");   // ignored by JavaScript for an id it never created
+        ctx.Dispose();
+    }
 }
+

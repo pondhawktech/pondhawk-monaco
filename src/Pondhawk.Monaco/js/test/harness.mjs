@@ -74,7 +74,7 @@ export function installDom() {
 }
 
 /** A host element stand-in — the module only sets dataset on it. */
-export const makeHost = () => ({ dataset: {} });
+export const makeHost = (connected = true) => ({ dataset: {}, isConnected: connected });
 
 /** Every recorded call of a given name. */
 export const calls = (monaco, name) => monaco.log.filter(c => c.name === name);

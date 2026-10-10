@@ -219,7 +219,27 @@ function ensureStyles(baseUrl, assetVersion) {
   document.head.appendChild(link);
 }
 
+/**
+ * Makes an editor over models already created, disposing those models if Monaco throws — they belong to no
+ * editor then, and nothing else would release them. The error still propagates: a failure other than a
+ * detached host is real and must be seen.
+ */
+function createOrRelease(make, models) {
+  try {
+    return make();
+  } catch (error) {
+    models.forEach(m => m.dispose());
+    throw error;
+  }
+}
+
 export function create(id, host, options) {
+  // A host already taken off the page: the component was removed between rendering it and this call —
+  // a list moved on quickly, a tab closed. Nothing to create, and not an error: the component is disposed
+  // next, and dispose(id) ignores an id that was never created. Monaco would throw inside create(), and
+  // the exception would surface as an unhandled render error for the whole page.
+  if (!host?.isConnected) return false;
+
   ensureStyles(options.baseUrl, options.assetVersion);
   configureWorkers(options.baseUrl, options.assetVersion);
   dispose(id); // defensive: a re-render that recreated the host must not leak the previous editor
@@ -236,7 +256,7 @@ export function create(id, host, options) {
   // would have created for itself — and we supply our own, so it is dropped silently.
   model.updateOptions({ tabSize: options.tabSize ?? 2 });
 
-  const editor = monaco.editor.create(host, {
+  const editor = createOrRelease(() => monaco.editor.create(host, {
     // Defaults chosen to be sensible for source editing generally, then overridden by whatever the
     // caller passes. `editorOptions` is a raw Monaco IStandaloneEditorConstructionOptions bag so this
     // component never becomes the bottleneck on Monaco's option surface.
@@ -260,7 +280,7 @@ export function create(id, host, options) {
     // inside overflow:hidden containers — layout is driven deliberately from .NET instead.
     model,
     automaticLayout: false,
-  });
+  }), [model]);
 
   const entry = {
     editor, model, dotNet: null, revision: 0, changeTimer: 0, subscriptions: [],
@@ -554,6 +574,8 @@ export function dispose(id) {
 // ---------------------------------------------------------------------------------------------------
 
 export function createDiff(id, host, options) {
+  if (!host?.isConnected) return false;   // see create()
+
   ensureStyles(options.baseUrl, options.assetVersion);
   configureWorkers(options.baseUrl, options.assetVersion);
   disposeDiff(id); // defensive, matching create()
@@ -563,7 +585,7 @@ export function createDiff(id, host, options) {
   const original = monaco.editor.createModel(options.original ?? '', language);
   const modified = monaco.editor.createModel(options.modified ?? '', language);
 
-  const editor = monaco.editor.createDiffEditor(host, {
+  const editor = createOrRelease(() => monaco.editor.createDiffEditor(host, {
     minimap: { enabled: options.minimap ?? false },
     scrollBeyondLastLine: false,
     tabSize: options.tabSize ?? 2,
@@ -584,7 +606,7 @@ export function createDiff(id, host, options) {
     ...(options.editorOptions ?? {}),
 
     automaticLayout: false, // same reasoning as create(): layout is driven from .NET
-  });
+  }), [original, modified]);
 
   editor.setModel({ original, modified });
   host.dataset.pondhawkEditor = id;   // see create()
