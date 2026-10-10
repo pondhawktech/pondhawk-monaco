@@ -14,6 +14,7 @@ const record = (name, ...args) => log.push({ name, args });
 
 export function reset() {
   log.length = 0;
+  editor.__failCreate = null;
   languages.__registered = ['plaintext', 'yaml', 'json', 'css', 'html', 'xml', 'markdown', 'sql', 'csharp'];
 }
 
@@ -129,12 +130,16 @@ export const editor = {
     record('editor.createModel', value, language, uri?.toString());
     return makeModel(value, language, uri);
   },
+  /** When set, the next create / createDiffEditor throws it — Monaco failing for a reason of its own. */
+  __failCreate: null,
   create(host, options) {
     record('editor.create', options);
+    if (editor.__failCreate) throw editor.__failCreate;
     return makeEditor(host, options);
   },
   createDiffEditor(host, options) {
     record('editor.createDiffEditor', options);
+    if (editor.__failCreate) throw editor.__failCreate;
     return makeDiffEditor(host, options);
   },
   setModelLanguage: (model, language) => record('editor.setModelLanguage', language),

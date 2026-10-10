@@ -270,6 +270,56 @@ describe('themes', () => {
   });
 });
 
+describe('a host already off the page', () => {
+  // The component was removed between rendering its host and this call: a list moved on quickly, a tab
+  // closed. Nothing is created and nothing throws; the component is disposed next.
+  test('create makes nothing and reports false', async () => {
+    const { mod, monaco } = await load();
+
+    const created = mod.create('e1', makeHost(false), { baseUrl: 'https://app.example/d', value: 'x', language: 'yaml' });
+
+    assert.equal(created, false);
+    assert.equal(calls(monaco, 'editor.createModel').length, 0, 'no model to leak');
+    assert.equal(calls(monaco, 'editor.create').length, 0);
+    assert.doesNotThrow(() => mod.dispose('e1'), 'disposing the never-created editor is safe');
+  });
+
+  test('createDiff makes nothing and reports false', async () => {
+    const { mod, monaco } = await load();
+
+    const created = mod.createDiff('d1', makeHost(false), { baseUrl: 'https://app.example/d', original: 'a', modified: 'b' });
+
+    assert.equal(created, false);
+    assert.equal(calls(monaco, 'editor.createModel').length, 0);
+    assert.doesNotThrow(() => mod.disposeDiff('d1'));
+  });
+
+  test('a host on the page is created, and reported', async () => {
+    const { mod } = await load();
+    assert.equal(mod.create('e1', makeHost(), { baseUrl: 'https://app.example/d', value: '', language: 'yaml' }), true);
+  });
+});
+
+describe('Monaco failing to create', () => {
+  test('the model made for the editor is disposed, and the error still surfaces', async () => {
+    const { mod, monaco } = await load();
+    monaco.editor.__failCreate = new Error('monaco broke');
+
+    assert.throws(() => mod.create('e1', makeHost(), { baseUrl: 'https://app.example/d', value: '', language: 'yaml' }), /monaco broke/);
+
+    assert.equal(calls(monaco, 'model.dispose').length, 1, 'the orphaned model is released');
+  });
+
+  test('both diff models are disposed', async () => {
+    const { mod, monaco } = await load();
+    monaco.editor.__failCreate = new Error('monaco broke');
+
+    assert.throws(() => mod.createDiff('d1', makeHost(), { baseUrl: 'https://app.example/d', original: 'a', modified: 'b' }), /monaco broke/);
+
+    assert.equal(calls(monaco, 'model.dispose').length, 2);
+  });
+});
+
 describe('unbundled languages', () => {
   test('an unknown language warns once and names what is bundled', async () => {
     const { mod } = await editorFixture({ language: 'python' });

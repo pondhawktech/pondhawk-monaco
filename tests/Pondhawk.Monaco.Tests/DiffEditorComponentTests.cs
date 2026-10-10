@@ -36,6 +36,7 @@ public class DiffEditorComponentTests
 
         var module = ctx.JSInterop.SetupModule(ModulePath);
         module.Mode = JSRuntimeMode.Loose;
+        module.Setup<bool>("createDiff", _ => true).SetResult(true);   // created: its host is on the page
         return (ctx, module);
     }
 
@@ -291,4 +292,18 @@ public class DiffEditorComponentTests
         module.VerifyInvoke("disposeDiff");
         ctx.Dispose();
     }
+
+    [Test]
+    public void A_host_off_the_page_is_never_attached()
+    {
+        var (ctx, module) = Arrange();
+        using var _ctx = ctx;
+        module.Setup<bool>("createDiff", _ => true).SetResult(false);   // the host had left the page
+
+        var cut = ctx.Render<DiffEditor>(p => p.Add(d => d.Original, "a").Add(d => d.Modified, "b"));
+
+        module.VerifyInvoke("createDiff");
+        module.Invocations.Identifiers.ShouldNotContain("attachDiff");
+    }
 }
+

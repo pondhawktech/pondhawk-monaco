@@ -136,7 +136,7 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
             _appliedOptions = CurrentOptions();
 
             _createIssued = true;
-            await _interop.CreateAsync(_id, _host, new EditorOptions
+            var created = await _interop.CreateAsync(_id, _host, new EditorOptions
             {
                 BaseUrl = baseUrl,
                 Value = Value,
@@ -149,6 +149,10 @@ public sealed partial class CodeEditor : ComponentBase, IAsyncDisposable
                 DebounceMs = DebounceMs,
                 RawOptions = EditorOptions,
             });
+
+            // Its host had already left the page: the component is on its way out, and stays uncreated —
+            // every later call waits on _created, and disposal ignores an editor that was never made.
+            if (!created) return;
 
             await _interop.AttachAsync(_id, _self);
             _created = true;
