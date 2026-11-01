@@ -80,7 +80,8 @@ jobs:
 
       # A tag that already exists means this version was released before. nuget.org would reject the
       # duplicate anyway, but failing here says why rather than failing at the push with a 409 — and it
-      # is what stops `bump: none` from silently republishing.
+      # is what stops `bump: none` from silently republishing. It asks the remote: a default checkout has
+      # no tags, so a local lookup would always pass.
       - name: Refuse a version that was already released
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -88,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null; then
             echo "::error::Tag v${VERSION} already exists. Choose a bump rather than 'none'."
             exit 1
           fi
