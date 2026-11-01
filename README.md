@@ -339,9 +339,9 @@ also what stops `none` from silently republishing.
 
 ### One-time setup
 
-- **`NUGET_ORG_API_KEY`** — the nuget.org API key. It is an **organisation** secret on `pondhawktech`,
-  shared across repositories rather than copied into each one, so nothing needs adding here as long as
-  its visibility includes this repository. The workflow passes it to Cake as `$PUBLISH_API_KEY` — by
+- **nuget.org Trusted Publishing** — a policy on nuget.org names this repository, `release.yml` and the
+  `nuget.org` environment, and needs no secret. `NuGet/login` exchanges the run's OIDC token for a
+  temporary key. The workflow passes it to Cake as `$PUBLISH_API_KEY` — by
   environment, not as an argument, since a secret on a command line shows up in process listings — and
   `Publish` refuses an empty one by name, because `dotnet nuget push` with a blank key returns a 403
   that reads like a permissions problem. GitHub Packages needs nothing: it uses `GITHUB_TOKEN`, passed

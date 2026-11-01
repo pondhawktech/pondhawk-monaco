@@ -30,6 +30,7 @@ permissions:
   contents: write   # commit the version bump, create the tag and the GitHub release
   packages: write   # mirror the released version to GitHub Packages
   actions: read     # find and download the CI build of this commit, to compare bundles against
+  id-token: write   # get the OIDC token that NuGet/login exchanges for a temporary nuget.org key
 
 concurrency:
   group: release
@@ -161,19 +162,26 @@ jobs:
           echo "Dry run: built ${{ steps.version.outputs.version }} and published nothing."
           echo "Directory.Build.props was bumped in the runner only; nothing was committed."
 
+      - name: NuGet login (OIDC to a temporary API key)
+        if: '!inputs.dry_run'
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: kampilan
+
       # nuget.org first, then record. The reverse order can leave a committed bump and a tag claiming a
       # release that was never published, which then blocks retrying that same version.
       #
       # PUBLISH_API_KEY is whatever credential the feed being pushed to wants — the Publish target is
-      # feed-agnostic, so each step supplies its own. Here that is NUGET_ORG_API_KEY, an ORGANISATION
-      # secret on pondhawktech rather than a repository one; below it is the built-in GITHUB_TOKEN.
+      # feed-agnostic, so each step supplies its own. Here that is the temporary key from NuGet/login
+      # (Trusted Publishing, no secret); below it is the built-in GITHUB_TOKEN.
       #
       # Publish refuses an empty key by name, because dotnet nuget push with a blank one returns a 403 —
       # which reads as a permissions problem and sends you looking in entirely the wrong place.
       - name: Publish to nuget.org
         if: '!inputs.dry_run'
         env:
-          PUBLISH_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+          PUBLISH_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           ./build.sh --target Publish \
             --source=https://api.nuget.org/v3/index.json \
