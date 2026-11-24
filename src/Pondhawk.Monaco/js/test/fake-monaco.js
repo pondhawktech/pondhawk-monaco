@@ -165,4 +165,11 @@ export const languages = {
   },
 };
 
+// The JSON service's export, which code-editor.js imports by name rather than reaching through languages.
+export const jsonDefaults = languages.json.jsonDefaults;
+
+// Monaco's compatibility createWebWorker (monaco-editor/internal/common/workers), which yamlMonaco hands to
+// monaco-yaml. Never called here: the fake monaco-yaml starts no worker.
+export const createWebWorker = (opts) => record('createWebWorker', opts);
+
 reset();

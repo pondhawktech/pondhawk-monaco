@@ -5,42 +5,58 @@
 // mistake that makes embedded editors feel laggy — in Blazor Server it is a network hop per character.
 
 // Monaco is imported one contribution at a time rather than through the `monaco-editor` barrel. The
-// barrel is editor.main.js, which is nothing but five side-effect imports — every language service and
-// all 83 highlighting grammars — plus `export * from './edcore.main'`. Importing edcore.main directly
-// keeps the whole editor (find, folding, suggest, quick access) and drops only what is not listed below.
+// barrel is editor.main.js: the editor API, every editor feature, every language service and all the
+// highlighting grammars. Importing the API and the features directly keeps the whole editor (find,
+// folding, suggest, quick access) and drops only the languages not listed below.
 //
 // The set is deliberate, not incidental. Carrying Monaco's full language set cost 3.3 MB packaged, of
 // which 5.7 MB uncompressed was the TypeScript compiler in ts.worker.js. Trimming to the languages this
 // component actually claims to support takes the package to 2.0 MB.
 //
+// Specifiers go through monaco-editor's `exports` map, which maps `monaco-editor/<path>` to
+// `esm/vs/<path>.js`. A specifier that spells out `esm/vs/` does not resolve.
+//
 // ADDING A LANGUAGE means an import here, plus its worker in build.mjs if it has a language service.
 // Nothing else: checkLanguage() below reads Monaco's own registry, so it cannot fall out of step.
-import * as monaco from 'monaco-editor/esm/vs/editor/edcore.main';
+import * as monaco from 'monaco-editor/editor/editor.api';
 
-// Language SERVICES — completion, diagnostics, hover. Each runs in its own worker.
-import 'monaco-editor/esm/vs/language/json/monaco.contribution';
-import 'monaco-editor/esm/vs/language/css/monaco.contribution';
-import 'monaco-editor/esm/vs/language/html/monaco.contribution';
+// Every editor feature. register.all is editor.main's feature set minus the five below, which editor.main
+// imports on its own; without them the editor would quietly lose caret moves, paste-as, the marker status
+// and semantic tokens it had on Monaco 0.52.
+import 'monaco-editor/features/register.all';
+import 'monaco-editor/editor/contrib/caretOperations/browser/caretOperations';
+import 'monaco-editor/editor/contrib/dropOrPasteInto/browser/copyPasteContribution';
+import 'monaco-editor/editor/contrib/gotoError/browser/markerSelectionStatus';
+import 'monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens';
+import 'monaco-editor/editor/contrib/structuralDiff/common/structuralDiff.contribution';
+
+// Language SERVICES — completion, diagnostics, hover. Each runs in its own worker. JSON's options are no
+// longer reachable as monaco.languages.json: the service exports them.
+import { jsonDefaults } from 'monaco-editor/languages/features/json/register';
+import 'monaco-editor/languages/features/css/register';
+import 'monaco-editor/languages/features/html/register';
 
 // Highlighting, and — for css and html — the language REGISTRATION their services depend on.
 //
-// The three service contributions above are not symmetric, which is a trap worth spelling out. JSON's
-// calls languages.register() itself, so it stands alone. CSS's and HTML's do not: they only attach via
-// languages.onLanguage(id, …), and the register() call for those ids lives here in basic-languages. Import
+// The three services above are not symmetric, which is a trap worth spelling out. JSON's calls
+// languages.register() itself, so it stands alone. CSS's and HTML's do not: they only attach via
+// languages.onLanguage(id, …), and the register() call for those ids lives here in the definitions. Import
 // the service without this and the id is never registered, so the hook never fires — the language does not
 // merely lose completion, it does not exist, and documents render as unhighlighted plain text.
-import 'monaco-editor/esm/vs/basic-languages/css/css.contribution';
-import 'monaco-editor/esm/vs/basic-languages/html/html.contribution';
+import 'monaco-editor/languages/definitions/css/register';
+import 'monaco-editor/languages/definitions/html/register';
 
 // Highlighting only. Monaco ships no language service for these, in the full bundle either — XML, SQL,
 // Markdown and C# were always colours and bracket matching, never completion.
-import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution';
-import 'monaco-editor/esm/vs/basic-languages/xml/xml.contribution';
-import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution';
-import 'monaco-editor/esm/vs/basic-languages/sql/sql.contribution';
-import 'monaco-editor/esm/vs/basic-languages/csharp/csharp.contribution';
+import 'monaco-editor/languages/definitions/yaml/register';
+import 'monaco-editor/languages/definitions/xml/register';
+import 'monaco-editor/languages/definitions/markdown/register';
+import 'monaco-editor/languages/definitions/sql/register';
+import 'monaco-editor/languages/definitions/csharp/register';
 
 import { configureMonacoYaml } from 'monaco-yaml';
+// The { moduleId, label } form of createWebWorker that monaco-yaml still uses. See yamlMonaco below.
+import { createWebWorker as createLabelledWebWorker } from 'monaco-editor/internal/common/workers';
 
 // Highlighting Monaco does not ship: our own grammars, registered when the module loads.
 import { register as registerStackTrace } from './stacktrace.js';
@@ -156,7 +172,7 @@ function applySchemas() {
     schema: entry.schema,
   }));
 
-  monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+  jsonDefaults.setDiagnosticsOptions({
     validate: true,
     enableSchemaRequest: false,
     // A document that breaks its schema is wrong, not questionable. Monaco's default is 'warning',
@@ -186,11 +202,19 @@ function applySchemas() {
  * already errors, and its warnings are its schema's, so raising them makes a schema problem the same red
  * squiggle in both formats. monaco-yaml sets markers through the Monaco it is handed, so the change is
  * confined to its own -- the global Monaco, and every other language's markers, are untouched.
+ *
+ * Its createWebWorker is Monaco's compatibility wrapper for the same reason it is needed at all: since
+ * Monaco 0.53 editor.createWebWorker takes a ready `worker`, while monaco-yaml (through
+ * monaco-worker-manager) still passes { moduleId, label, createData }. The plain API then fails with
+ * "Could not create web worker(s)" and the YAML service silently does nothing. Monaco's own JSON, CSS and
+ * HTML services call this wrapper; editor.main installs it, and we do not import editor.main.
+ * https://github.com/remcohaszing/monaco-yaml/issues/272
  */
 const yamlMonaco = {
   ...monaco,
   editor: {
     ...monaco.editor,
+    createWebWorker: createLabelledWebWorker,
     setModelMarkers(model, owner, markers) {
       monaco.editor.setModelMarkers(model, owner, markers.map(m =>
         m.severity === monaco.MarkerSeverity.Warning ? { ...m, severity: monaco.MarkerSeverity.Error } : m));
