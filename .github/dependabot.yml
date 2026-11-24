@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # NuGet: one grouped PR a week for minor and patch updates; each other major update in its own PR.
+  # Microsoft.Extensions, ASP.NET Core, EF Core and System.* majors follow the .NET release:
+  # take those with a deliberate target-framework upgrade, not from Dependabot.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      nuget-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.AspNetCore.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.*"
+        update-types: ["version-update:semver-major"]
