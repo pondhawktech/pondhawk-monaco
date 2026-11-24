@@ -17,8 +17,8 @@ mkdirSync(path.dirname(outfile), { recursive: true });
 await esbuild.build({
   stdin: {
     contents: [
-      `export { compile } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchCompile.js';`,
-      `export { MonarchTokenizer } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchLexer.js';`,
+      `export { compile } from 'monaco-editor/editor/standalone/common/monarch/monarchCompile.js';`,
+      `export { MonarchTokenizer } from 'monaco-editor/editor/standalone/common/monarch/monarchLexer.js';`,
     ].join('\n'),
     resolveDir: path.join(here, '..'),
     sourcefile: 'monarch-entry.mjs',

@@ -8,6 +8,7 @@
 
 import * as esbuild from 'esbuild';
 import { rmSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 const outdir = '../wwwroot/dist';
 const watch = process.argv.includes('--watch');
@@ -15,6 +16,19 @@ const watch = process.argv.includes('--watch');
 // Clean so stale worker chunks from a previous Monaco version can't linger and get served.
 rmSync(outdir, { recursive: true, force: true });
 mkdirSync(outdir, { recursive: true });
+
+// monaco-worker-manager (monaco-yaml's worker side) imports 'monaco-editor/esm/vs/editor/editor.worker.js'.
+// Since Monaco 0.53 the package has an `exports` map that turns 'monaco-editor/<path>' into
+// 'esm/vs/<path>.js', so that specifier no longer resolves. Point any such path at the file it names.
+/** @type {import('esbuild').Plugin} */
+const legacyMonacoPaths = {
+  name: 'legacy-monaco-paths',
+  setup(build) {
+    build.onResolve({ filter: /^monaco-editor\/esm\// }, args => ({
+      path: path.resolve('node_modules/monaco-editor', args.path.slice('monaco-editor/'.length)),
+    }));
+  },
+};
 
 /** @type {import('esbuild').BuildOptions} */
 const shared = {
@@ -57,6 +71,7 @@ const workers = {
     'yaml.worker': 'node_modules/monaco-yaml/yaml.worker.js',
   },
   format: 'iife',
+  plugins: [legacyMonacoPaths],
 };
 
 if (watch) {
